@@ -1,0 +1,5 @@
+# Switch 1 build environment: devkitPro's devkitA64 image as is (libnx, deko3d, uam, switch-mesa, SDL2, elf2nro,
+# nxlink). The same tag as tools/switch2/Containerfile.
+#
+#   docker build -t fnv-switch1 -f tools/switch1/Containerfile tools/switch1
+FROM docker.io/devkitpro/devkita64:20260219

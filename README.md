@@ -70,6 +70,15 @@ tools/switch2/build.sh port/switch2/fnv_fast make -j8                    # build
 
 The result is `port/switch2/fnv_fast/fnv.nro`. The compiler needs 1–2 GB of RAM per job.
 
+### Switch 1
+
+Needs docker or podman. `tools/switch1/build.sh` builds the toolchain image (`tools/switch1/Containerfile`) on first
+use and runs `make` in the given directory:
+
+```bash
+tools/switch1/build.sh port/switch1/hello   # toolchain check: port/switch1/hello/hello.nro
+```
+
 How the recompiler works is in [docs/RECOMP.md](docs/RECOMP.md). The browser build is described in
 [docs/README_browser.md](docs/README_browser.md).
 
