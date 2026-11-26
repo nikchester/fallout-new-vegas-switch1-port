@@ -1,0 +1,25 @@
+# Build outputs and local working directories
+out/
+local/
+**/build/
+*.nro
+*.nacp
+*.elf
+*.map
+*.o
+*.d
+
+# Game files and data generated from them (never commit)
+FalloutNV*.exe
+Data/
+/data_image.*
+**/build/data_image.*
+!tools/data_image.py
+
+# ccache
+.ccache/
+ccache/
+
+# Console logs (repository root and build folders)
+/*.log
+**/build/**/*.log
