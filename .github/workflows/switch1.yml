@@ -16,3 +16,13 @@ jobs:
         with:
           name: hello-nro
           path: port/switch1/hello/hello.nro
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ENGINE=docker tools/switch1/build.sh port/switch1/probe
+      - run: make -C port/switch1/probe/linux && ./port/switch1/probe/linux/cpubench
+      - uses: actions/upload-artifact@v4
+        with:
+          name: probe-nro
+          path: port/switch1/probe/probe.nro
