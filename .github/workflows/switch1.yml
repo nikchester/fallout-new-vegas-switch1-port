@@ -1,0 +1,18 @@
+# Builds the Switch 1 toolchain check (port/switch1/hello) in tools/switch1's container and keeps the NRO as an artifact.
+name: switch1
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  hello:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ENGINE=docker tools/switch1/build.sh port/switch1/hello
+      - run: ls -l port/switch1/hello/hello.nro
+      - uses: actions/upload-artifact@v4
+        with:
+          name: hello-nro
+          path: port/switch1/hello/hello.nro
