@@ -5,6 +5,7 @@
 #include <cerrno>
 #include <cstdarg>
 #include <cstdio>
+#include <initializer_list>
 #include <sys/stat.h>
 
 #include <deko3d.h>
