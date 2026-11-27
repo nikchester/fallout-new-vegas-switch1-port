@@ -8,6 +8,9 @@
 #include <stdlib.h>
 
 #include "pal_fs.h"
+#ifdef FNV_GUEST_BASE_ADDR
+#include "guest_heap.h"
+#endif
 
 #include <algorithm>
 #include <atomic>
@@ -363,7 +366,26 @@ bool ini_lookup(const char* file, const char* app, const char* key, std::vector<
     return false;
 }
 
-// ---- heaps: size-prefixed blocks over malloc ---------------------------------------------------------------------
+// ---- heaps -------------------------------------------------------------------------------------------------------
+#ifdef FNV_GUEST_BASE_ADDR
+// Окно гостя: блоки выдаёт guest_heap (хост вызывает guest_heap_init до запуска гостя).
+uint32_t heap_alloc(uint32_t size, bool zero)
+{
+    uint32_t p = guest_heap_alloc(size, zero);
+    if (p) pal_mem_add(PAL_MEM_HEAP, size);
+    return p;
+}
+bool heap_ours(uint32_t p) { return guest_heap_owns(p); }
+uint32_t heap_size(uint32_t p) { return guest_heap_size(p); }
+void heap_free(uint32_t p)
+{
+    if (guest_heap_owns(p))
+    {
+        pal_mem_add(PAL_MEM_HEAP, -(int64_t)guest_heap_size(p));
+        guest_heap_free(p);
+    }
+}
+#else
 const uint32_t kHeapHeader = 16;
 uint32_t heap_alloc(uint32_t size, bool zero)
 {
@@ -385,6 +407,8 @@ void heap_free(uint32_t p)
         free((void*)FNV_G2H(p - kHeapHeader));
     }
 }
+
+#endif
 
 // ---- thread start -----------------------------------------------------------------------------------------------
 thread_local jmp_buf* t_exit_jmp;
@@ -1067,6 +1091,10 @@ void k_HeapReAlloc(FnvCpu& s)
     heap_free(p);
     RET(q, 4);
 }
+#ifdef FNV_GUEST_BASE_ADDR
+void k_VirtualAlloc(FnvCpu& s) { RET(guest_vm_alloc(A(0), A(1), A(2)), 4); }
+void k_VirtualFree(FnvCpu& s) { RET(guest_vm_free(A(0), A(1), A(2)) ? 1 : 0, 3); }
+#endif
 void k_HeapValidate(FnvCpu& s) { RET(1, 3); }
 void k_LocalAlloc(FnvCpu& s) { RET(heap_alloc(A(1), (A(0) & 0x40) != 0), 2); }
 void k_LocalFree(FnvCpu& s) { heap_free(A(0)); RET(0, 1); }
@@ -1260,6 +1288,9 @@ const PalEntry kKernel[] = {
     {"HeapAlloc", k_HeapAlloc}, {"HeapFree", k_HeapFree}, {"HeapSize", k_HeapSize}, {"HeapReAlloc", k_HeapReAlloc},
     {"HeapValidate", k_HeapValidate}, {"LocalAlloc", k_LocalAlloc}, {"LocalFree", k_LocalFree},
     {"GlobalAlloc", k_GlobalAlloc}, {"GlobalFree", k_GlobalFree},
+#ifdef FNV_GUEST_BASE_ADDR
+    {"VirtualAlloc", k_VirtualAlloc}, {"VirtualFree", k_VirtualFree},
+#endif
     {"lstrcpyA", k_lstrcpyA}, {"lstrcatA", k_lstrcatA}, {"lstrlenA", k_lstrlenA}, {"lstrcmpiA", k_lstrcmpiA},
     {"GetACP", k_GetACP}, {"GetOEMCP", k_GetOEMCP}, {"IsValidCodePage", k_IsValidCodePage}, {"GetCPInfo", k_GetCPInfo},
     {"MultiByteToWideChar", k_MultiByteToWideChar}, {"WideCharToMultiByte", k_WideCharToMultiByte},
