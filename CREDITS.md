@@ -55,3 +55,10 @@ copy of the game.
 This project's own code is under the [GNU General Public License v3.0](LICENSE): anyone may use, copy, change and
 share it, provided changed versions they share are also under the GPL-3.0 with their source available. The licence covers only our original work, not the game, its files, anything generated
 from them, or fnv_decomp's material.
+
+## fnv-web-recomp: the platform layer
+
+**[fnv-web-recomp](https://github.com/SgtMetz/fnv-web-recomp)** by SgtMetz and contributors (MIT) is the source of
+`port/recomp/`: the recompiler runtime, intrinsics and the Windows platform layer (`pal_*`) that the lifted code runs
+on. The files were copied unchanged except `fnv_recomp.h`, which gained the `RCALLK`/`RCALLIK` macros that the newer
+`tools/recomp.py` emits (see `tools/callee_saved.py`).
