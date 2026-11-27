@@ -295,7 +295,7 @@ uint32_t lookup_export(const char* name)
     auto it = done.find(name);
     if (it != done.end()) return it->second;
     uint32_t v = 0;
-    for (const PalEntry* grp : {pal_kernel_entries(), pal_user_entries(), pal_input_entries(), pal_sound_entries(),
+    for (const PalEntry* grp : {pal_kernel_entries(), pal_user_entries(), pal_bink_entries(), pal_input_entries(), pal_sound_entries(),
                                 pal_d3d9_entries(), pal_d3dx_entries()})
         for (const PalEntry* p = grp; p->name && !v; ++p)
             if (!strcmp(p->name, name)) v = fnv_host_register(p->name, p->fn);
@@ -368,7 +368,7 @@ bool map_exe(const char* path)
             const ImportInfo* im = import_info(dll, nm);
             const char* real = im ? im->real : nm;
             uint32_t v = 0;
-            for (const PalEntry* grp : {pal_kernel_entries(), pal_user_entries(), pal_input_entries(), pal_sound_entries(),
+            for (const PalEntry* grp : {pal_kernel_entries(), pal_user_entries(), pal_bink_entries(), pal_input_entries(), pal_sound_entries(),
                                          pal_d3d9_entries(), pal_d3dx_entries()})
                 for (const PalEntry* p = grp; p->name && !v; ++p)
                     if (!strcmp(p->name, real)) { v = fnv_host_register(p->name, p->fn); ++pal; }

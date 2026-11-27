@@ -1,6 +1,6 @@
 // PAL user group: user32 (one main window, its class, a message queue, window procedures called on the guest), gdi32,
 // comctl32, shell32, ole32, winmm's mmio, and the libraries the browser build does without: WinSock (no network),
-// Bink (no movies yet), the Steam/Galaxy wrapper (no client), and browser XInput.
+// the Steam/Galaxy wrapper (no client), and browser XInput.
 #include "pal.h"
 #include "pal_fs.h"
 #ifdef __EMSCRIPTEN__
@@ -459,14 +459,6 @@ void w_gethostbyname(FnvCpu& s) { RET(0, 1); }
 void w_gethostname(FnvCpu& s) { if (A(1)) strncpy(gbuf(A(0)), "localhost", A(1)); RET(0, 2); }
 void w_FDIsSet(FnvCpu& s) { RET(0, 2); }
 
-// ---- Bink: no movies yet (BinkOpen fails, the game skips them) -------------------------------------------------------
-void b_BinkOpen(FnvCpu& s) { RET(0, 2); }
-void b_BinkSetSoundSystem(FnvCpu& s) { RET(1, 2); }
-void b_BinkOpenDirectSound(FnvCpu& s) { RET(0, 1); }
-void b_void1(FnvCpu& s) { RET(0, 1); }
-void b_void2(FnvCpu& s) { RET(0, 2); }
-void b_BinkCopyToBufferRect(FnvCpu& s) { RET(0, 11); }
-
 // ---- XInput: one browser gamepad, with the XINPUT_STATE layout --------------------------------------------------------
 #ifdef __EMSCRIPTEN__
 std::mutex g_gamepad_mutex;
@@ -659,9 +651,6 @@ const PalEntry kUser[] = {
     {"WSAAsyncSelect", w_err4}, {"htons", w_htons}, {"ntohs", w_htons}, {"inet_addr", w_inet_addr},
     {"inet_ntoa", w_inet_ntoa}, {"gethostbyname", w_gethostbyname}, {"gethostname", w_gethostname},
     {"__WSAFDIsSet", w_FDIsSet},
-    {"BinkOpen", b_BinkOpen}, {"BinkSetSoundSystem", b_BinkSetSoundSystem}, {"BinkOpenDirectSound", b_BinkOpenDirectSound},
-    {"BinkClose", b_void1}, {"BinkDoFrame", b_void1}, {"BinkNextFrame", b_void1}, {"BinkWait", b_void1},
-    {"BinkPause", b_void2}, {"BinkCopyToBufferRect", b_BinkCopyToBufferRect},
     {"XInputGetState", x_XInputGetState}, {"XInputSetState", x_XInputSetState},
     {"SteamAPI_Init", st_false}, {"SteamAPI_IsSteamRunning", st_false}, {"SteamAPI_RegisterCallback", st_false},
     {"SteamAPI_UnregisterCallback", st_false}, {"SteamAPI_RunCallbacks", st_false}, {"SteamAPI_Shutdown", st_false},
