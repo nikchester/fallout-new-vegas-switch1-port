@@ -18,7 +18,8 @@ struct PalEntry
 
 // The implemented imports, terminated by {nullptr, nullptr}. Groups: pal_kernel.cpp (more to come).
 const PalEntry* pal_kernel_entries();
-const PalEntry* pal_user_entries();     // pal_user.cpp: user32, gdi32, comctl32, shell32, ole32, mmio, WinSock, Bink, XInput, Steam
+const PalEntry* pal_user_entries();     // pal_user.cpp: user32, gdi32, comctl32, shell32, ole32, mmio, WinSock, XInput, Steam
+const PalEntry* pal_bink_entries();     // pal_bink.cpp: Bink video stub (no movies: BinkOpen fails, the game skips them)
 const PalEntry* pal_input_entries();    // pal_input.cpp: DirectInput8
 void pal_input_script(const char* script);                       // FNV_INPUT_SCRIPT key taps
 void pal_input_key(int dik, bool down);                         // host input: DIK_* scan code

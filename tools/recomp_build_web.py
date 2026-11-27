@@ -25,7 +25,7 @@ HEADERS = [ROOT / 'port/recomp/fnv_recomp.h', ROOT / 'port/recomp/fnv_recomp_hos
            ROOT / 'port/recomp/pal.h', ROOT / 'port/recomp/pal_com.h', OUT / 'import_table.inc', OUT / 'com_tables.inc',
            ROOT / 'port/recomp/pal_d3d9.h', ROOT / 'port/recomp/pal_sound.h', OUT / 'd3d9_caps.inc']
 PORT = ['fnv_recomp_rt.cpp', 'fnv_intrinsics.cpp', 'pal_kernel.cpp', 'native_math.cpp', 'pal_fs_std.cpp', 'pal_fs_web.cpp', 'pal_com.cpp', 'pal_user.cpp', 'pal_input.cpp', 'pal_start.cpp',
-        'pal_dsound.cpp', 'pal_d3d9.cpp', 'pal_d3dx.cpp', 'pal_dshow.cpp', 'host_web.cpp']
+        'pal_dsound.cpp', 'pal_d3d9.cpp', 'pal_d3dx.cpp', 'pal_dshow.cpp', 'pal_bink.cpp', 'host_web.cpp']
 CFLAGS = [os.environ.get('FNV_WEB_OPT', '-O2'), '-fno-strict-aliasing', '-fwrapv', '-fno-delete-null-pointer-checks', '-fno-strict-float-cast-overflow', '-c', '-w', '-pthread', '-std=c++17', '-I' + str(ROOT / 'port/recomp')] +     (['-DFNV_CALL_TRACE'] if os.environ.get('FNV_CALL_TRACE') else [])
 LDFLAGS = ['-O1', '-pthread', '-sGLOBAL_BASE=22020096', '-sSTACK_SIZE=64MB',
            '-sDEFAULT_PTHREAD_STACK_SIZE=4MB',
