@@ -96,12 +96,12 @@ void u_CreateWindowExA(FnvCpu& s)
              w.w, w.h, hwnd, 10);
     fnv_host_log(buf);
     // WM_CREATE with a CREATESTRUCTA, as CreateWindowEx sends it before returning
-    uint32_t cs = (uint32_t)(uintptr_t)calloc(1, 48);
+    uint32_t cs = FNV_H2G(calloc(1, 48));
     M32(cs + 0) = a[11]; M32(cs + 4) = a[10]; M32(cs + 8) = a[9]; M32(cs + 12) = a[8];
     M32(cs + 16) = w.h; M32(cs + 20) = w.w; M32(cs + 24) = w.y; M32(cs + 28) = w.x;
     M32(cs + 32) = w.style; M32(cs + 36) = a[2]; M32(cs + 40) = a[1]; M32(cs + 44) = w.exstyle;
     call_wndproc(s, hwnd, 0x0001, 0, cs);
-    free((void*)(uintptr_t)cs);
+    free((void*)FNV_G2H(cs));
     RET(hwnd, 12);
 }
 void u_DestroyWindow(FnvCpu& s)
@@ -240,9 +240,9 @@ void sh_CommandLineToArgvW(FnvCpu& s)
     // argv = {"FalloutNV.exe"}: an array of pointers followed by the strings, freed by LocalFree in the game
     static uint16_t arg0[] = {'F', 'a', 'l', 'l', 'o', 'u', 't', 'N', 'V', '.', 'e', 'x', 'e', 0};
     uint32_t* argv = (uint32_t*)calloc(2, 4);
-    argv[0] = (uint32_t)(uintptr_t)arg0;
+    argv[0] = FNV_H2G(arg0);
     if (A(1)) M32(A(1)) = 1;
-    RET((uintptr_t)argv, 2);
+    RET(FNV_H2G(argv), 2);
 }
 void sh_ShellExecuteA(FnvCpu& s) { RET(2, 6); }              // <= 32: failure, the game carries on
 
@@ -257,8 +257,8 @@ void o_CoCreateInstance(FnvCpu& s)
     RET(obj ? 0 : 0x80040154u, 5);                           // REGDB_E_CLASSNOTREG
 }
 void o_CoFreeUnusedLibraries(FnvCpu& s) { RET(0, 0); }
-void o_CoTaskMemAlloc(FnvCpu& s) { RET((uintptr_t)malloc(A(0) ? A(0) : 1), 1); }
-void o_CoTaskMemFree(FnvCpu& s) { free((void*)(uintptr_t)A(0)); RET(0, 1); }
+void o_CoTaskMemAlloc(FnvCpu& s) { RET(FNV_H2G(malloc(A(0) ? A(0) : 1)), 1); }
+void o_CoTaskMemFree(FnvCpu& s) { free((void*)FNV_G2H(A(0))); RET(0, 1); }
 
 // ---- winmm mmio: RIFF/WAV parsing for the game's sounds ----------------------------------------------------------------
 // A file opens whole into memory (by name through pal_fs, or from the caller's memory block with FOURCC_MEM); the
@@ -290,30 +290,30 @@ void m_mmioOpenA(FnvCpu& s)
         // close, then parse from memory. MMIOM_READ 0, MMIOM_OPEN 3, MMIOM_CLOSE 4; the proc keeps its state in the
         // MMIOINFO, so it gets a private copy as on Windows.
         uint32_t proc = M32(info + 8);
-        uint32_t mi = (uint32_t)(uintptr_t)calloc(1, 72);
+        uint32_t mi = FNV_H2G(calloc(1, 72));
         memcpy(gbuf(mi), gbuf(info), 72);
         M32(mi + 44) = 0;
         uint32_t open_args[4] = {mi, 3, name, 0};
         if (fnv_guest_call(s, proc, open_args, 4) == 0)
         {
             std::string all;
-            uint32_t chunk = (uint32_t)(uintptr_t)malloc(65536);
+            uint32_t chunk = FNV_H2G(malloc(65536));
             for (;;)
             {
                 uint32_t read_args[4] = {mi, 0, chunk, 65536};
                 int32_t n = (int32_t)fnv_guest_call(s, proc, read_args, 4);
                 if (n <= 0) break;
-                all.append((const char*)(uintptr_t)chunk, (size_t)n);
+                all.append((const char*)FNV_G2H(chunk), (size_t)n);
             }
-            free((void*)(uintptr_t)chunk);
+            free((void*)FNV_G2H(chunk));
             uint32_t close_args[4] = {mi, 4, 0, 0};
             fnv_guest_call(s, proc, close_args, 4);
             m->size = (uint32_t)all.size();
-            m->data = (uint32_t)(uintptr_t)malloc(m->size ? m->size : 4);
-            memcpy((void*)(uintptr_t)m->data, all.data(), all.size());
+            m->data = FNV_H2G(malloc(m->size ? m->size : 4));
+            memcpy((void*)FNV_G2H(m->data), all.data(), all.size());
             m->owned = true;
         }
-        free((void*)(uintptr_t)mi);
+        free((void*)FNV_G2H(mi));
     }
     else if (name)
     {
@@ -325,8 +325,8 @@ void m_mmioOpenA(FnvCpu& s)
             for (size_t n; (n = pal_fs_read(chunk, sizeof chunk, f)) > 0;) all.append(chunk, n);
             pal_fs_close(f);
             m->size = (uint32_t)all.size();
-            m->data = (uint32_t)(uintptr_t)malloc(m->size ? m->size : 4);
-            memcpy((void*)(uintptr_t)m->data, all.data(), all.size());
+            m->data = FNV_H2G(malloc(m->size ? m->size : 4));
+            memcpy((void*)FNV_G2H(m->data), all.data(), all.size());
             m->owned = true;
         }
     }
@@ -350,7 +350,7 @@ void m_mmioClose(FnvCpu& s)
     auto it = g_mmio.find(A(0));
     if (it != g_mmio.end())
     {
-        if (it->second->owned) free((void*)(uintptr_t)it->second->data);
+        if (it->second->owned) free((void*)FNV_G2H(it->second->data));
         delete it->second;
         g_mmio.erase(it);
     }
@@ -363,7 +363,7 @@ void m_mmioRead(FnvCpu& s)
     uint32_t n = A(2);
     if (m->pos >= m->size) n = 0;
     else if (n > m->size - m->pos) n = m->size - m->pos;
-    memcpy(gbuf(A(1)), (const void*)(uintptr_t)(m->data + m->pos), n);
+    memcpy(gbuf(A(1)), (const void*)FNV_G2H(m->data + m->pos), n);
     m->pos += n;
     RET(n, 3);
 }
@@ -380,7 +380,7 @@ void m_mmioDescend(FnvCpu& s)
     uint32_t pos = m->pos;
     while (pos + 8 <= end)
     {
-        const uint8_t* d = (const uint8_t*)(uintptr_t)m->data;
+        const uint8_t* d = (const uint8_t*)FNV_G2H(m->data);
         uint32_t id, size;
         memcpy(&id, d + pos, 4);
         memcpy(&size, d + pos + 4, 4);
@@ -454,7 +454,7 @@ void w_err4(FnvCpu& s) { w_fail_n(s, 4); }
 void w_err5(FnvCpu& s) { w_fail_n(s, 5); }
 void w_htons(FnvCpu& s) { uint32_t v = A(0) & 0xffff; RET(((v >> 8) | (v << 8)) & 0xffff, 1); }
 void w_inet_addr(FnvCpu& s) { RET(0xffffffffu, 1); }
-void w_inet_ntoa(FnvCpu& s) { static char z[] = "0.0.0.0"; RET((uintptr_t)z, 1); }
+void w_inet_ntoa(FnvCpu& s) { static char z[] = "0.0.0.0"; RET(FNV_H2G(z), 1); }
 void w_gethostbyname(FnvCpu& s) { RET(0, 1); }
 void w_gethostname(FnvCpu& s) { if (A(1)) strncpy(gbuf(A(0)), "localhost", A(1)); RET(0, 2); }
 void w_FDIsSet(FnvCpu& s) { RET(0, 2); }
@@ -534,20 +534,20 @@ void ov_open_callbacks_(FnvCpu& s)
     uint32_t ds = A(0), vf = A(1), initial = A(2), ibytes = A(3), read_fn = A(4), close_fn = A(6);
     if (!g_ov_decoder || !read_fn) RETC(0xFFFFFF7Cu);                  // OV_ENOTVORBIS (-132)
     std::string all;
-    if (initial && ibytes) all.append((const char*)(uintptr_t)initial, ibytes);
-    uint32_t chunk = (uint32_t)(uintptr_t)malloc(65536);
+    if (initial && ibytes) all.append((const char*)FNV_G2H(initial), ibytes);
+    uint32_t chunk = FNV_H2G(malloc(65536));
     for (;;)
     {
         uint32_t args[4] = {chunk, 1, 65536, ds};
         uint32_t n = fnv_guest_call(s, read_fn, args, 4);
         if (!n || n > 65536) break;
-        all.append((const char*)(uintptr_t)chunk, n);
+        all.append((const char*)FNV_G2H(chunk), n);
     }
-    free((void*)(uintptr_t)chunk);
+    free((void*)FNV_G2H(chunk));
 #ifdef __EMSCRIPTEN__
     // request: data, bytes, done, pcm, frames, channels, rate, ok
     uint32_t* req = (uint32_t*)calloc(8, 4);
-    req[0] = (uint32_t)(uintptr_t)all.data();
+    req[0] = FNV_H2G(all.data());
     req[1] = (uint32_t)all.size();
     MAIN_THREAD_ASYNC_EM_ASM({ if (globalThis.fnvDecode) globalThis.fnvDecode($0); else HEAPU32[(($0 >>> 0) >>> 2) + 2] = 1; }, req);
     for (int i = 0; i < 20000 && !__atomic_load_n(&req[2], __ATOMIC_ACQUIRE); ++i) usleep(500);
@@ -558,7 +558,7 @@ void ov_open_callbacks_(FnvCpu& s)
         f = new OvFile;
         f->pcm = req[3]; f->frames = req[4]; f->channels = req[5]; f->rate = req[6];
         f->datasource = ds; f->close_fn = close_fn;
-        f->info = (uint32_t)(uintptr_t)calloc(8, 4);
+        f->info = FNV_H2G(calloc(8, 4));
         M32(f->info + 4) = f->channels;
         M32(f->info + 8) = f->rate;
         pal_mem_add(PAL_MEM_VORBIS, (int64_t)f->frames * f->channels * 2);
@@ -584,7 +584,7 @@ void ov_open_callbacks_(FnvCpu& s)
 void ov_info_(FnvCpu& s)
 {
     OvFile* f = ov(A(0));
-    RETC(f ? f->info : (uint32_t)(uintptr_t)g_vorbis_info);
+    RETC(f ? f->info : FNV_H2G(g_vorbis_info));
 }
 void ov_pcm_total_(FnvCpu& s)
 {
@@ -602,7 +602,7 @@ void ov_read_(FnvCpu& s)
     uint32_t n = A(2) & ~1u;
     if (f->pos >= total) RETC(0);
     if (n > total - f->pos) n = total - f->pos;
-    memcpy(gbuf(A(1)), (const void*)(uintptr_t)(f->pcm + f->pos), n);
+    memcpy(gbuf(A(1)), (const void*)FNV_G2H(f->pcm + f->pos), n);
     f->pos += n;
     RETC(n);
 }
@@ -617,10 +617,10 @@ void ov_clear_(FnvCpu& s)
     if (f)
     {
         if (f->close_fn) { uint32_t args[1] = {f->datasource}; fnv_guest_call(s, f->close_fn, args, 1); }
-        free((void*)(uintptr_t)f->pcm);
+        free((void*)FNV_G2H(f->pcm));
         pal_mem_add(PAL_MEM_VORBIS, -(int64_t)f->frames * f->channels * 2);
         pal_mem_add(PAL_MEM_VORBIS_N, -1);
-        free((void*)(uintptr_t)f->info);
+        free((void*)FNV_G2H(f->info));
         delete f;
     }
     RETC(0);
