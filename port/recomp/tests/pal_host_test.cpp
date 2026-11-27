@@ -5,6 +5,7 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <algorithm>
 #include <initializer_list>
 #include <string>
 #include <vector>
