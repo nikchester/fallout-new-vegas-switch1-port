@@ -1,6 +1,7 @@
 // fnv1 probe: measures what the console offers (memory, address space, CPU, GPU, SD). Writes to the screen and to
 // sdmc:/switch/fnv1/probe.log; changes nothing else on the SD card. Every svc failure is logged with its result code.
 // When started with `nxlink -s`, every line is also sent to the PC.
+#include <arpa/inet.h>  // struct in_addr for __nxlink_host
 #include <switch.h>
 
 #include <cerrno>
