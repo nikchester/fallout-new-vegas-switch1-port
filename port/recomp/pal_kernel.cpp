@@ -200,7 +200,7 @@ bool stat_path(const std::string& p, PalStat& st) { return pal_fs_stat(p.c_str()
 
 void fill_find(uint32_t d, const std::string& full)
 {
-    memset((void*)(uintptr_t)d, 0, 320);
+    memset((void*)FNV_G2H(d), 0, 320);
     PalStat st;
     if (!stat_path(full, st)) return;
     M32(d) = st.dir ? 0x10u : 0x20u;
@@ -372,17 +372,17 @@ uint32_t heap_alloc(uint32_t size, bool zero)
     pal_mem_add(PAL_MEM_HEAP, size);
     memcpy(p, &size, 4);
     memcpy(p + 4, "FNVH", 4);
-    return (uint32_t)(uintptr_t)(p + kHeapHeader);
+    return FNV_H2G(p + kHeapHeader);
 }
-bool heap_ours(uint32_t p) { return p && !memcmp((void*)(uintptr_t)(p - kHeapHeader + 4), "FNVH", 4); }
+bool heap_ours(uint32_t p) { return p && !memcmp((void*)FNV_G2H(p - kHeapHeader + 4), "FNVH", 4); }
 uint32_t heap_size(uint32_t p) { return M32(p - kHeapHeader); }
 void heap_free(uint32_t p)
 {
     if (heap_ours(p))
     {
         pal_mem_add(PAL_MEM_HEAP, -(int64_t)heap_size(p));
-        memset((void*)(uintptr_t)(p - kHeapHeader + 4), 0, 4);
-        free((void*)(uintptr_t)(p - kHeapHeader));
+        memset((void*)FNV_G2H(p - kHeapHeader + 4), 0, 4);
+        free((void*)FNV_G2H(p - kHeapHeader));
     }
 }
 
@@ -421,7 +421,7 @@ void k_GetCurrentProcess(FnvCpu& s) { RET(0xffffffffu, 0); }
 void k_IsDebuggerPresent(FnvCpu& s) { RET(0, 0); }
 
 // ---- interlocked --------------------------------------------------------------------------------------------------
-uint32_t* gp(uint32_t a) { return (uint32_t*)(uintptr_t)a; }
+uint32_t* gp(uint32_t a) { return (uint32_t*)FNV_G2H(a); }
 void k_InterlockedIncrement(FnvCpu& s) { RET(__atomic_add_fetch(gp(A(0)), 1u, __ATOMIC_SEQ_CST), 1); }
 void k_InterlockedDecrement(FnvCpu& s) { RET(__atomic_sub_fetch(gp(A(0)), 1u, __ATOMIC_SEQ_CST), 1); }
 void k_InterlockedExchange(FnvCpu& s) { RET(__atomic_exchange_n(gp(A(0)), A(1), __ATOMIC_SEQ_CST), 2); }
@@ -438,19 +438,19 @@ std::mutex g_cs_init;
 std::recursive_mutex* cs_of(uint32_t cs)
 {
     uint32_t m = __atomic_load_n(gp(cs), __ATOMIC_ACQUIRE);
-    if (m && m != 0xffffffffu) return (std::recursive_mutex*)(uintptr_t)m;
+    if (m && m != 0xffffffffu) return (std::recursive_mutex*)FNV_G2H(m);
     std::lock_guard<std::mutex> lk(g_cs_init);
     m = M32(cs);
     if (!m || m == 0xffffffffu)
     {
-        m = (uint32_t)(uintptr_t) new std::recursive_mutex;
+        m = FNV_H2G(new std::recursive_mutex);
         __atomic_store_n(gp(cs), m, __ATOMIC_RELEASE);
     }
-    return (std::recursive_mutex*)(uintptr_t)m;
+    return (std::recursive_mutex*)FNV_G2H(m);
 }
 void cs_init(uint32_t cs)
 {
-    memset((void*)(uintptr_t)cs, 0, 24);
+    memset((void*)FNV_G2H(cs), 0, 24);
     M32(cs + 12) = 0;                                 // OwningThread
     cs_of(cs);
 }
@@ -482,7 +482,7 @@ void k_LeaveCriticalSection(FnvCpu& s)
 void k_DeleteCriticalSection(FnvCpu& s)
 {
     uint32_t cs = A(0), m = M32(cs);
-    if (m && m != 0xffffffffu) delete (std::recursive_mutex*)(uintptr_t)m;
+    if (m && m != 0xffffffffu) delete (std::recursive_mutex*)FNV_G2H(m);
     M32(cs) = 0;
     RET(0, 1);
 }
@@ -802,7 +802,7 @@ void filetime_to_systemtime(uint64_t ft, uint32_t st)
     y += m <= 2;
     uint16_t v[8] = {(uint16_t)y, (uint16_t)m, (uint16_t)((days + 4) % 7 < 0 ? (days + 4) % 7 + 7 : (days + 4) % 7),
                      (uint16_t)d, (uint16_t)(rem / 3600), (uint16_t)(rem / 60 % 60), (uint16_t)(rem % 60), (uint16_t)ms};
-    memcpy((void*)(uintptr_t)st, v, 16);
+    memcpy((void*)FNV_G2H(st), v, 16);
 }
 void k_FileTimeToSystemTime(FnvCpu& s)
 {
@@ -818,7 +818,7 @@ void k_CompareFileTime(FnvCpu& s)
 }
 void k_GetSystemTime(FnvCpu& s) { filetime_to_systemtime(now_filetime(), A(0)); RET(0, 1); }
 void k_GetLocalTime(FnvCpu& s) { filetime_to_systemtime(now_filetime(), A(0)); RET(0, 1); }
-void k_GetTimeZoneInformation(FnvCpu& s) { memset((void*)(uintptr_t)A(0), 0, 172); RET(0, 1); }
+void k_GetTimeZoneInformation(FnvCpu& s) { memset((void*)FNV_G2H(A(0)), 0, 172); RET(0, 1); }
 
 // ---- files ----------------------------------------------------------------------------------------------------------
 uint32_t g_std[3];
@@ -1063,7 +1063,7 @@ void k_HeapReAlloc(FnvCpu& s)
     if (A(1) & 0x10) RET(size <= old ? p : 0, 4);       // HEAP_REALLOC_IN_PLACE_ONLY
     uint32_t q = heap_alloc(size, (A(1) & 8) != 0);
     if (!q) RET(0, 4);
-    memcpy((void*)(uintptr_t)q, (void*)(uintptr_t)p, std::min(old, size));
+    memcpy((void*)FNV_G2H(q), (void*)FNV_G2H(p), std::min(old, size));
     heap_free(p);
     RET(q, 4);
 }
@@ -1084,7 +1084,7 @@ void k_IsValidCodePage(FnvCpu& s) { RET(1, 1); }
 void k_GetCPInfo(FnvCpu& s)
 {
     uint32_t p = A(1);
-    memset((void*)(uintptr_t)p, 0, 20);
+    memset((void*)FNV_G2H(p), 0, 20);
     M32(p) = 1;                                          // MaxCharSize
     M8(p + 4) = '?';                                     // DefaultChar
     RET(1, 2);
@@ -1097,12 +1097,12 @@ void k_MultiByteToWideChar(FnvCpu& s)
     uint32_t dst = A(4), cap = A(5);
     if (!cap) RET(n, 6);
     int32_t k = std::min<int32_t>(n, (int32_t)cap);
-    for (int32_t i = 0; i < k; ++i) *(uint16_t*)(uintptr_t)(dst + 2 * i) = src[i];
+    for (int32_t i = 0; i < k; ++i) *(uint16_t*)FNV_G2H(dst + 2 * i) = src[i];
     RET(k, 6);
 }
 void k_WideCharToMultiByte(FnvCpu& s)
 {
-    const uint16_t* src = (const uint16_t*)(uintptr_t)A(2);
+    const uint16_t* src = (const uint16_t*)FNV_G2H(A(2));
     int32_t n = (int32_t)A(3);
     if (n < 0) { n = 0; while (src[n]) ++n; ++n; }
     uint32_t dst = A(4), cap = A(5);
@@ -1114,7 +1114,7 @@ void k_WideCharToMultiByte(FnvCpu& s)
 void k_LCMapStringW(FnvCpu& s)
 {
     uint32_t flags = A(1);
-    const uint16_t* src = (const uint16_t*)(uintptr_t)A(2);
+    const uint16_t* src = (const uint16_t*)FNV_G2H(A(2));
     int32_t n = (int32_t)A(3);
     if (n < 0) { n = 0; while (src[n]) ++n; ++n; }
     uint32_t dst = A(4), cap = A(5);
@@ -1125,16 +1125,16 @@ void k_LCMapStringW(FnvCpu& s)
         uint16_t c = src[i];
         if ((flags & 0x100) && c < 128) c = (uint16_t)tolower(c);
         if ((flags & 0x200) && c < 128) c = (uint16_t)toupper(c);
-        *(uint16_t*)(uintptr_t)(dst + 2 * i) = c;
+        *(uint16_t*)FNV_G2H(dst + 2 * i) = c;
     }
     RET(k, 6);
 }
 void k_GetStringTypeW(FnvCpu& s)
 {
-    const uint16_t* src = (const uint16_t*)(uintptr_t)A(1);
+    const uint16_t* src = (const uint16_t*)FNV_G2H(A(1));
     int32_t n = (int32_t)A(2);
     if (n < 0) { n = 0; while (src[n]) ++n; ++n; }
-    uint16_t* out = (uint16_t*)(uintptr_t)A(3);
+    uint16_t* out = (uint16_t*)FNV_G2H(A(3));
     for (int32_t i = 0; i < n; ++i)
     {
         int c = src[i] < 256 ? src[i] : 0;
@@ -1154,11 +1154,11 @@ void k_GetStringTypeW(FnvCpu& s)
 }
 
 // ---- process information --------------------------------------------------------------------------------------------
-void k_GetCommandLineA(FnvCpu& s) { static char cl[] = "\"FalloutNV.exe\""; RET((uintptr_t)cl, 0); }
-void k_GetCommandLineW(FnvCpu& s) { static uint16_t cl[] = {'F', 'a', 'l', 'l', 'o', 'u', 't', 'N', 'V', '.', 'e', 'x', 'e', 0}; RET((uintptr_t)cl, 0); }
-void k_GetStartupInfoA(FnvCpu& s) { memset((void*)(uintptr_t)A(0), 0, 68); M32(A(0)) = 68; RET(0, 1); }
-void k_GetEnvironmentStringsW(FnvCpu& s) { static uint16_t env[2] = {0, 0}; RET((uintptr_t)env, 0); }
-void k_GetEnvironmentStringsA(FnvCpu& s) { static char env[2] = {0, 0}; RET((uintptr_t)env, 0); }
+void k_GetCommandLineA(FnvCpu& s) { static char cl[] = "\"FalloutNV.exe\""; RET(FNV_H2G(cl), 0); }
+void k_GetCommandLineW(FnvCpu& s) { static uint16_t cl[] = {'F', 'a', 'l', 'l', 'o', 'u', 't', 'N', 'V', '.', 'e', 'x', 'e', 0}; RET(FNV_H2G(cl), 0); }
+void k_GetStartupInfoA(FnvCpu& s) { memset((void*)FNV_G2H(A(0)), 0, 68); M32(A(0)) = 68; RET(0, 1); }
+void k_GetEnvironmentStringsW(FnvCpu& s) { static uint16_t env[2] = {0, 0}; RET(FNV_H2G(env), 0); }
+void k_GetEnvironmentStringsA(FnvCpu& s) { static char env[2] = {0, 0}; RET(FNV_H2G(env), 0); }
 void k_GetEnvironmentVariableA(FnvCpu& s) { set_err(203); RET(0, 3); }
 void k_SetHandleCount(FnvCpu& s) { RET(A(0), 1); }
 void k_GetVersionExA(FnvCpu& s)
@@ -1172,7 +1172,7 @@ void k_GetVersion(FnvCpu& s) { RET(0x1db10106u, 0); }
 void k_GetSystemInfo(FnvCpu& s)
 {
     uint32_t p = A(0);
-    memset((void*)(uintptr_t)p, 0, 36);
+    memset((void*)FNV_G2H(p), 0, 36);
     M32(p + 4) = 4096;                                  // page size
     M32(p + 8) = 0x10000; M32(p + 12) = 0x7ffeffff;     // application address range
     M32(p + 16) = 0xf;                                  // active processor mask
@@ -1186,14 +1186,14 @@ void k_GlobalMemoryStatusEx(FnvCpu& s)
     uint32_t p = A(0);
     uint64_t v[7] = {4ull << 30, 3ull << 30, 8ull << 30, 6ull << 30, 2ull << 30, 1ull << 30, 0};
     M32(p + 4) = 25;
-    memcpy((void*)(uintptr_t)(p + 8), v, sizeof v);
+    memcpy((void*)FNV_G2H(p + 8), v, sizeof v);
     RET(1, 1);
 }
 void k_GlobalMemoryStatus(FnvCpu& s)
 {
     uint32_t p = A(0);
     uint32_t v[8] = {32, 25, 0x7fffffff, 0x60000000, 0x7fffffff, 0x60000000, 0x7ffe0000, 0x40000000};
-    memcpy((void*)(uintptr_t)p, v, sizeof v);
+    memcpy((void*)FNV_G2H(p), v, sizeof v);
     RET(0, 1);
 }
 void k_GetUserNameA(FnvCpu& s) { strcpy(gbuf(A(0)), "Player"); if (A(1)) M32(A(1)) = 7; RET(1, 2); }
