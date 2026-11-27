@@ -209,9 +209,21 @@ static void gpu_tests() {
 
 static void sd_test() {
     say("== SD read ==");
-    const char* path = "sdmc:/switch/fnv/Data/Fallout - Meshes.bsa";
-    FILE* f = fopen(path, "rb");
-    if (!f) return say("  skipped: %s not found (errno %d)", path, errno);
+    static const char* const paths[] = {
+        "sdmc:/switch/fnv1/Data/Fallout - Meshes.bsa",
+        "sdmc:/switch/fnv1/Fallout - Meshes.bsa",
+        "sdmc:/switch/fnv/Data/Fallout - Meshes.bsa",
+        "sdmc:/switch/fnv/Fallout - Meshes.bsa",
+    };
+    FILE* f = nullptr;
+    for (const char* path : paths) {
+        if ((f = fopen(path, "rb"))) {
+            say("  file: %s", path);
+            break;
+        }
+        say("  not found: %s (errno %d)", path, errno);
+    }
+    if (!f) return say("  skipped: Fallout - Meshes.bsa not found");
     static u8 buf[MiB];
     u64 total = 0, t0 = cpubench_now_ns();
     for (size_t n; total < 256 * MiB && (n = fread(buf, 1, sizeof buf, f)) > 0;) total += n;
