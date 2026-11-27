@@ -1,4 +1,4 @@
-// Linux unit test for guest_heap: VirtualAlloc/HeapAlloc over a 4 GB window, addresses above 2 GB (LAA) included.
+// Linux unit test for guest_heap: VirtualAlloc/HeapAlloc over a 4 GB window; the hard non-LAA limit keeps everything below 2 GB.
 // Build and run: tools/test_guest_heap.sh
 #include <stdio.h>
 #include <sys/mman.h>
@@ -17,7 +17,7 @@ int main()
     CHECK(w != MAP_FAILED);
     fnv_guest_base = ((uintptr_t)w + 0xffffu) & ~(uintptr_t)0xffffu;
 
-    // Window [0x70000000, 0x90000000) straddles 2 GB; exhaustion at 512 MB.
+    // Window [0x70000000, 0x90000000) is clamped to [0x70000000, 0x80000000); exhaustion at 256 MB.
     guest_heap_init(0x70000000u, 0x90000000ull);
 
     // VirtualAlloc: reserve, commit, write, decommit, release.
@@ -33,13 +33,13 @@ int main()
     CHECK(guest_vm_free(r, 0, GH_MEM_RELEASE));
     CHECK(guest_vm_alloc(0, 0x1000, GH_MEM_RESERVE | GH_MEM_COMMIT) == r);          // address reused
 
-    // Addresses >= 0x80000000: reserve a fixed region there, no sign errors.
-    uint32_t hi = guest_vm_alloc(0x80000000u, 0x20000, GH_MEM_RESERVE | GH_MEM_COMMIT);
-    CHECK(hi == 0x80000000u);
-    M32(hi) = 0xcafef00du;
-    CHECK(*(uint32_t*)(fnv_guest_base + 0x80000000ull) == 0xcafef00du);
-    CHECK(guest_vm_alloc(0x80008000u, 0x1000, GH_MEM_RESERVE) == 0);                  // overlaps
-    CHECK(guest_vm_free(hi, 0, GH_MEM_RELEASE));
+    // Addresses >= 0x80000000 are refused (non-LAA), also fixed ones and ones straddling the limit.
+    CHECK(guest_vm_alloc(0x80000000u, 0x20000, GH_MEM_RESERVE | GH_MEM_COMMIT) == 0);
+    CHECK(guest_vm_alloc(0xf0000000u, 0x1000, GH_MEM_RESERVE) == 0);
+    CHECK(guest_vm_alloc(0x7fff0000u, 0x20000, GH_MEM_RESERVE) == 0);
+    uint32_t edge = guest_vm_alloc(0x7fff0000u, 0x10000, GH_MEM_RESERVE | GH_MEM_COMMIT);
+    CHECK(edge == 0x7fff0000u);
+    CHECK(guest_vm_free(edge, 0, GH_MEM_RELEASE));
 
     // Heap: alloc, free, reuse, realloc, zeroing.
     uint32_t a = guest_heap_alloc(100, true), b = guest_heap_alloc(100, false);
@@ -63,19 +63,18 @@ int main()
     guest_heap_free(big);
     CHECK(guest_heap_alloc(8u << 20, false) == big);
 
-    // Blocks above 2 GB: fill the window past 0x80000000.
+    // Fill the window: nothing is handed out at or above 0x80000000.
     uint32_t top = 0;
-    for (int i = 0; i < 20; ++i)
+    for (int i = 0; i < 10; ++i)
     {
         uint32_t p = guest_heap_alloc(16u << 20, false);
         CHECK(p);
         if (p > top) top = p;
         M32(p) = i;
     }
-    CHECK(top >= 0x80000000u);
-    CHECK(FNV_H2G(FNV_G2H(top)) == top);
+    CHECK(top < 0x80000000u && FNV_H2G(FNV_G2H(top)) == top);
 
-    // Exhaustion: limit 0x20000000 total, so further huge allocations fail and nothing crashes; freeing recovers.
+    // Exhaustion: limit 0x10000000 total, so further huge allocations fail and nothing crashes; freeing recovers.
     uint32_t held[64], n = 0;
     while (n < 64 && (held[n] = guest_heap_alloc(64u << 20, false))) ++n;
     CHECK(n > 0 && n < 64);
@@ -84,6 +83,7 @@ int main()
     CHECK(guest_heap_alloc(64u << 20, false) == held[0]);
     CHECK(guest_heap_alloc(0xfffffff0u, false) == 0);
 
+    CHECK(guest_heap_high_water() > 0x70000000u && guest_heap_high_water() <= GH_NO_LAA_LIMIT);
     printf(g_fail ? "guest_heap_test: %d failures\n" : "guest_heap_test: ok\n", g_fail);
     return g_fail != 0;
 }
