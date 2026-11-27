@@ -88,7 +88,7 @@ ComClass* com_class(const char* iface, std::initializer_list<std::pair<const cha
             fnv_host_log(buf);
         }
     }
-    cls->vtbl = (uint32_t)(uintptr_t)vt;
+    cls->vtbl = FNV_H2G(vt);
     g_classes[iface] = cls;
     return cls;
 }
@@ -112,7 +112,7 @@ ComClass* com_class_custom(const char* iface, std::initializer_list<ComCustom> m
         g_stub_info[(a - fnv_host_base()) / 16] = {ci, i};
         vt[i++] = a;
     }
-    cls->vtbl = (uint32_t)(uintptr_t)vt;
+    cls->vtbl = FNV_H2G(vt);
     g_classes[iface] = cls;
     return cls;
 }
@@ -121,7 +121,7 @@ uint32_t com_new(ComClass* cls, void* host)
 {
     uint32_t* o = (uint32_t*)calloc(4, 4);
     o[0] = cls->vtbl;
-    o[1] = (uint32_t)(uintptr_t)host;
+    o[1] = FNV_H2G(host);
     o[2] = 1;
-    return (uint32_t)(uintptr_t)o;
+    return FNV_H2G(o);
 }

@@ -206,7 +206,7 @@ void b_Release(FnvCpu& s)
         // the 3 GB heap in a few minutes of play (problem report 20261113-IQTFGH, Aborted(OOM)).
         if (b->data_refs && !--*b->data_refs)
         {
-            free((void*)(uintptr_t)b->data);
+            free((void*)FNV_G2H(b->data));
             pal_mem_add(PAL_MEM_SOUND, -(int64_t)b->size);
             delete b->data_refs;
         }
@@ -278,7 +278,7 @@ void s_CreateSoundBuffer(FnvCpu& s)
     }
     if (!b->block) b->block = 4;
     if (!b->avg) b->avg = b->rate * b->block;
-    b->data = (uint32_t)(uintptr_t)calloc(1, b->size ? b->size : 4);
+    b->data = FNV_H2G(calloc(1, b->size ? b->size : 4));
     b->data_refs = new uint32_t(1);
     pal_mem_add(PAL_MEM_SOUND, b->size);
     b->obj = com_new(buffer_class(), b);
@@ -320,7 +320,7 @@ float db_gain(int32_t hundredths) { return hundredths >= 0 ? 1.f : hundredths <=
 
 float sample(Buffer* b, uint32_t frame, uint32_t ch)
 {
-    const uint8_t* d = (const uint8_t*)(uintptr_t)b->data + frame * b->block;
+    const uint8_t* d = (const uint8_t*)FNV_G2H(b->data) + frame * b->block;
     uint32_t c = b->channels > 1 ? ch : 0;
     if (b->bits == 8) return (d[c] - 128) / 128.f;
     return ((const int16_t*)d)[c] / 32768.f;
@@ -397,7 +397,7 @@ void mixer_thread()
             continue;
         }
         mix_chunk(tmp.data(), chunk);
-        float* ring = (float*)(uintptr_t)g_audio.data;
+        float* ring = (float*)FNV_G2H(g_audio.data);
         for (uint32_t i = 0; i < chunk; ++i)
         {
             uint32_t at = (w + i) % g_audio.frames;
@@ -419,7 +419,7 @@ PalAudioRing* pal_sound_ring() { return &g_audio; }
 void pal_sound_enable(uint32_t frames, uint32_t target)
 {
     g_audio.frames = frames;
-    g_audio.data = (uint32_t)(uintptr_t)calloc(frames, 8);
+    g_audio.data = FNV_H2G(calloc(frames, 8));
     g_audio.target = target;
     g_audio.rate = PAL_AUDIO_RATE;
     g_audio.write = g_audio.read = 0;

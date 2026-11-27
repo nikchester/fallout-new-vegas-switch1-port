@@ -69,7 +69,7 @@ void emit(uint32_t op, std::initializer_list<uint32_t> words, const void* data =
     M32(p + 4) = payload;
     uint32_t q = p + 8;
     for (uint32_t v : words) { M32(q) = v; q += 4; }
-    if (len) memcpy((void*)(uintptr_t)q, data, len);
+    if (len) memcpy((void*)FNV_G2H(q), data, len);
     __atomic_store_n(&g_ring.write, w + total, __ATOMIC_RELEASE);
 }
 
@@ -209,7 +209,7 @@ uint32_t level_mem(Tex* t, uint32_t face, uint32_t level)
     {
         uint32_t pitch, rows;
         uint32_t bytes = pal_d3d_format_bytes(t->fmt, t->lw(level), t->lh(level), &pitch, &rows) * t->ld(level);
-        L.mem = (uint32_t)(uintptr_t)calloc(1, bytes ? bytes : 4);
+        L.mem = FNV_H2G(calloc(1, bytes ? bytes : 4));
         pal_mem_add(PAL_MEM_TEX, bytes);
         L.bytes = bytes; L.pitch = pitch; L.rows = rows;
     }
@@ -235,7 +235,7 @@ void upload_level(Tex* t, uint32_t face, uint32_t level, uint32_t x, uint32_t y,
     for (uint32_t z = 0; z < slices; ++z)
         for (uint32_t r = 0; r < rows; ++r)
             memcpy(&data[((size_t)z * rows + r) * row_bytes],
-                   (const void*)(uintptr_t)(L.mem + z * L.pitch * L.rows + (first_row + r) * L.pitch + col), row_bytes);
+                   (const void*)FNV_G2H(L.mem + z * L.pitch * L.rows + (first_row + r) * L.pitch + col), row_bytes);
     emit(OP_UPLOAD_TEXTURE, {t->id, face, level, x, y, w, h, row_bytes, rows * slices}, data.data(), (uint32_t)data.size());
 }
 
@@ -243,7 +243,7 @@ void destroy_tex(Tex* t)
 {
     emit(OP_DESTROY, {t->id});
     for (Level& L : t->lv)
-        if (L.mem) { free((void*)(uintptr_t)L.mem); pal_mem_add(PAL_MEM_TEX, -(int64_t)L.bytes); }
+        if (L.mem) { free((void*)FNV_G2H(L.mem)); pal_mem_add(PAL_MEM_TEX, -(int64_t)L.bytes); }
     t->lv.clear();
 }
 
@@ -410,7 +410,7 @@ void bf_Release(FnvCpu& s)
 {
     Buf* b = bufo(s);
     uint32_t r = release(A(0));
-    if (!r) { emit(OP_DESTROY, {b->id}); free((void*)(uintptr_t)b->mem); b->mem = 0; pal_mem_add(PAL_MEM_BUF, -(int64_t)b->size); }
+    if (!r) { emit(OP_DESTROY, {b->id}); free((void*)FNV_G2H(b->mem)); b->mem = 0; pal_mem_add(PAL_MEM_BUF, -(int64_t)b->size); }
     RET(r, 1);
 }
 void bf_Lock(FnvCpu& s)
@@ -427,7 +427,7 @@ void bf_Unlock(FnvCpu& s)
 {
     Buf* b = bufo(s);
     if (b->locked && b->lsize)
-        emit(OP_UPLOAD_BUFFER, {b->id, b->lo, b->lsize}, (const void*)(uintptr_t)(b->mem + b->lo), b->lsize);
+        emit(OP_UPLOAD_BUFFER, {b->id, b->lo, b->lsize}, (const void*)FNV_G2H(b->mem + b->lo), b->lsize);
     b->locked = false;
     RET(0, 1);
 }
@@ -458,7 +458,7 @@ ComClass* buffer_class(bool index)
 void sh_GetFunction(FnvCpu& s)
 {
     Shader* sh = (Shader*)com_host(A(0));
-    if (A(1)) memcpy(gbuf(A(1)), (const void*)(uintptr_t)sh->tokens, sh->bytes);
+    if (A(1)) memcpy(gbuf(A(1)), (const void*)FNV_G2H(sh->tokens), sh->bytes);
     M32(A(2)) = sh->bytes;
     RET(0, 3);
 }
@@ -472,7 +472,7 @@ void sh_Release(FnvCpu& s)
 void dc_GetDeclaration(FnvCpu& s)
 {
     Decl* d = (Decl*)com_host(A(0));
-    if (A(1)) memcpy(gbuf(A(1)), (const void*)(uintptr_t)d->mem, (d->count + 1) * 8);
+    if (A(1)) memcpy(gbuf(A(1)), (const void*)FNV_G2H(d->mem), (d->count + 1) * 8);
     M32(A(2)) = d->count + 1;
     RET(0, 3);
 }
@@ -650,7 +650,7 @@ uint32_t new_buffer(Device* d, uint32_t size, uint32_t kind, uint32_t usage, uin
 {
     Buf* b = new Buf{g_next_id.fetch_add(1), size, kind, usage, pool, fvf, fmt, 0};
     b->dev = d;
-    b->mem = (uint32_t)(uintptr_t)calloc(1, size ? size : 4);
+    b->mem = FNV_H2G(calloc(1, size ? size : 4));
     pal_mem_add(PAL_MEM_BUF, size);
     b->obj = com_new(buffer_class(kind != 0), b);
     emit(OP_CREATE_BUFFER, {b->id, size, kind});
@@ -679,7 +679,7 @@ void copy_surface_data(uint32_t src, uint32_t dst)
     uint32_t ma = level_mem(a->tex, a->face, a->level), mb = level_mem(b->tex, b->face, b->level);
     Level& La = a->tex->lv[a->face * a->tex->levels + a->level];
     Level& Lb = b->tex->lv[b->face * b->tex->levels + b->level];
-    memcpy((void*)(uintptr_t)mb, (void*)(uintptr_t)ma, La.bytes < Lb.bytes ? La.bytes : Lb.bytes);
+    memcpy((void*)FNV_G2H(mb), (void*)FNV_G2H(ma), La.bytes < Lb.bytes ? La.bytes : Lb.bytes);
     upload_level(b->tex, b->face, b->level, 0, 0, b->tex->lw(b->level), b->tex->lh(b->level));
 }
 void dv_UpdateSurface(FnvCpu& s) { copy_surface_data(A(1), A(3)); RET(0, 5); }
@@ -692,7 +692,7 @@ void dv_UpdateTexture(FnvCpu& s)
         {
             uint32_t ma = level_mem(a, f, l), mb = level_mem(b, f, l);
             Level& La = a->lv[f * a->levels + l];
-            memcpy((void*)(uintptr_t)mb, (void*)(uintptr_t)ma, La.bytes);
+            memcpy((void*)FNV_G2H(mb), (void*)FNV_G2H(ma), La.bytes);
             upload_level(b, f, l, 0, 0, b->lw(l), b->lh(l));
         }
     RET(0, 3);
@@ -907,7 +907,7 @@ void dv_DrawPrimitiveUP(FnvCpu& s)
 {
     uint32_t type = A(1), count = A(2), data = A(3), stride = A(4);
     uint32_t bytes = prim_vertices(type, count) * stride;
-    emit(OP_DRAW_UP, {type, count, stride, bytes}, (const void*)(uintptr_t)data, bytes);
+    emit(OP_DRAW_UP, {type, count, stride, bytes}, (const void*)FNV_G2H(data), bytes);
     // D3D9 unsets stream 0 after an UP draw
     Device* d = D(s);
     d->stream[0] = 0; d->stream_off[0] = 0; d->stream_stride[0] = 0;
@@ -919,8 +919,8 @@ void dv_DrawIndexedPrimitiveUP(FnvCpu& s)
     uint32_t isz = fmt == 102 ? 4 : 2;
     uint32_t ibytes = prim_vertices(type, count) * isz, vbytes = (minidx + nverts) * stride;
     std::vector<uint8_t> data(((ibytes + 3) & ~3u) + vbytes);
-    memcpy(data.data(), (const void*)(uintptr_t)idx, ibytes);
-    memcpy(data.data() + ((ibytes + 3) & ~3u), (const void*)(uintptr_t)verts, vbytes);
+    memcpy(data.data(), (const void*)FNV_G2H(idx), ibytes);
+    memcpy(data.data() + ((ibytes + 3) & ~3u), (const void*)FNV_G2H(verts), vbytes);
     emit(OP_DRAW_INDEXED_UP, {type, minidx, nverts, count, isz == 4, stride, ibytes, vbytes}, data.data(), (uint32_t)data.size());
     Device* d = D(s);
     d->stream[0] = 0; d->ib = 0;
@@ -933,8 +933,8 @@ void dv_CreateVertexDeclaration(FnvCpu& s)
     uint32_t e = A(1), n = 0;
     while (M16(e + n * 8) != 0xff && n < 64) ++n;
     Decl* d = new Decl{g_next_id.fetch_add(1), n, 0, 0, D(s)};
-    d->mem = (uint32_t)(uintptr_t)malloc((n + 1) * 8);
-    memcpy((void*)(uintptr_t)d->mem, gbuf(e), (n + 1) * 8);
+    d->mem = FNV_H2G(malloc((n + 1) * 8));
+    memcpy((void*)FNV_G2H(d->mem), gbuf(e), (n + 1) * 8);
     d->obj = com_new(c, d);
     emit(OP_CREATE_DECL, {d->id, n}, gbuf(e), n * 8);
     M32(A(2)) = d->obj;
@@ -989,8 +989,8 @@ uint32_t new_shader(Device* d, uint32_t stage, uint32_t tokens)
     uint32_t n = 1;
     while (n < (1u << 18) && M32(tokens + (n - 1) * 4) != 0x0000FFFFu) ++n;
     Shader* sh = new Shader{g_next_id.fetch_add(1), stage, 0, n * 4, 0, d};
-    sh->tokens = (uint32_t)(uintptr_t)malloc(n * 4);
-    memcpy((void*)(uintptr_t)sh->tokens, gbuf(tokens), n * 4);
+    sh->tokens = FNV_H2G(malloc(n * 4));
+    memcpy((void*)FNV_G2H(sh->tokens), gbuf(tokens), n * 4);
     uint32_t h[5];
     sha1((const uint8_t*)gbuf(tokens), n * 4, h);
     sh->obj = com_new(stage ? cp : cv, sh);
@@ -1269,7 +1269,7 @@ D3dRing* pal_d3d_ring() { return &g_ring; }
 void pal_d3d_enable_ring(uint32_t bytes)
 {
     g_ring.size = bytes;
-    g_ring.data = (uint32_t)(uintptr_t)calloc(1, bytes);
+    g_ring.data = FNV_H2G(calloc(1, bytes));
     g_ring.write = g_ring.read = 0;
     g_ring.enabled = 1;
 }
@@ -1284,6 +1284,6 @@ void pal_d3d_fill_level(uint32_t texture, uint32_t face, uint32_t level, const u
     if (level >= t->levels || face >= t->faces()) return;
     uint32_t mem = level_mem(t, face, level);
     Level& L = t->lv[face * t->levels + level];
-    memcpy((void*)(uintptr_t)mem, data, bytes < L.bytes ? bytes : L.bytes);
+    memcpy((void*)FNV_G2H(mem), data, bytes < L.bytes ? bytes : L.bytes);
     upload_level(t, face, level, 0, 0, t->lw(level), t->lh(level));
 }

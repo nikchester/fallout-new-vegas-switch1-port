@@ -111,7 +111,7 @@ void ba_put_Balance(FnvCpu& s) { G(s)->balance = (int32_t)A(1); RET(0, 2); }
 void ba_get_Balance(FnvCpu& s) { M32(A(1)) = (uint32_t)G(s)->balance; RET(0, 2); }
 
 // IMediaPosition (REFTIME = double seconds; by-value doubles take two stack words)
-void put_double(uint32_t p, double v) { memcpy((void*)(uintptr_t)p, &v, 8); }
+void put_double(uint32_t p, double v) { memcpy((void*)FNV_G2H(p), &v, 8); }
 double arg_double(FnvCpu& s, int i) { double v; uint32_t w[2] = {A(i), A(i + 1)}; memcpy(&v, w, 8); return v; }
 void mp_get_Duration(FnvCpu& s) { Graph* g = G(s); put_double(A(1), g->duration > 0 ? g->duration : kTrackSeconds); RET(0, 2); }
 void mp_put_CurrentPosition(FnvCpu& s)
