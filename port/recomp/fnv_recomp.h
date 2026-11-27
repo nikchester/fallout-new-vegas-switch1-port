@@ -38,12 +38,33 @@ extern "C" void fnv_trace_enter(uint32_t addr);
 #define FNV_ENTER(a) ((void)0)
 #endif
 
-#define M8(a) (*(uint8_t*)(uintptr_t)(uint32_t)(a))
-#define M16(a) (*(uint16_t*)(uintptr_t)(uint32_t)(a))
-#define M32(a) (*(uint32_t*)(uintptr_t)(uint32_t)(a))
-#define M64(a) (*(uint64_t*)(uintptr_t)(uint32_t)(a))
-#define MF(a) (*(float*)(uintptr_t)(uint32_t)(a))
-#define MD(a) (*(double*)(uintptr_t)(uint32_t)(a))
+// Guest address <-> host pointer. The address is always taken as uint32_t (never int32_t: a guest address above 2 GB,
+// LAA, must not sign-extend). Three modes:
+//   default                      the guest address is the host address (native process, wasm32 linear memory)
+//   -DFNV_GUEST_BASE=<ull>       the 4 GB guest window sits at a fixed host address (tools/recomp_build_posix.py)
+//   -DFNV_GUEST_BASE_RUNTIME     the window base is chosen at run time (Horizon: the low 4 GB are not available);
+//                                the host sets fnv_guest_base once, before any guest memory is touched
+// Host memory the guest is meant to see (PAL allocations, buffers handed to the guest) must lie inside the window.
+#if defined(FNV_GUEST_BASE_RUNTIME)
+extern "C" uintptr_t fnv_guest_base;
+#define FNV_GUEST_BASE_ADDR ((uintptr_t)fnv_guest_base)
+#elif defined(FNV_GUEST_BASE)
+#define FNV_GUEST_BASE_ADDR ((uintptr_t)(FNV_GUEST_BASE))
+#endif
+#ifdef FNV_GUEST_BASE_ADDR
+#define FNV_G2H(a) (FNV_GUEST_BASE_ADDR + (uintptr_t)(uint32_t)(a))
+#define FNV_H2G(p) ((uint32_t)((uintptr_t)(p) - FNV_GUEST_BASE_ADDR))
+#else
+#define FNV_G2H(a) ((uintptr_t)(uint32_t)(a))
+#define FNV_H2G(p) ((uint32_t)(uintptr_t)(p))
+#endif
+
+#define M8(a) (*(uint8_t*)FNV_G2H(a))
+#define M16(a) (*(uint16_t*)FNV_G2H(a))
+#define M32(a) (*(uint32_t*)FNV_G2H(a))
+#define M64(a) (*(uint64_t*)FNV_G2H(a))
+#define MF(a) (*(float*)FNV_G2H(a))
+#define MD(a) (*(double*)FNV_G2H(a))
 #define X(i) (s.xmm[i])
 #define MMX(i) (s.mm[i])
 // Lock release on weakly ordered CPUs (ARM: Apple Silicon, phones). The game releases its spinlocks with a plain
@@ -56,7 +77,7 @@ extern "C" int fnv_weak_memory;
 inline void fnv_store_release0(uint32_t a)
 {
     if (a & 3u) { __atomic_thread_fence(__ATOMIC_RELEASE); M32(a) = 0u; }      // atomics need natural alignment
-    else __atomic_store_n((uint32_t*)(uintptr_t)a, 0u, __ATOMIC_RELEASE);
+    else __atomic_store_n((uint32_t*)FNV_G2H(a), 0u, __ATOMIC_RELEASE);
 }
 #define MREL(a, v) do { uint32_t a__ = (uint32_t)(a), v__ = (uint32_t)(v); \
     if (__builtin_expect(v__ == 0u && fnv_weak_memory, 0)) fnv_store_release0(a__); else M32(a__) = v__; } while (0)

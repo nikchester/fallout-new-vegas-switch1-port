@@ -70,5 +70,5 @@ const char* fnv_host_exe_path();
 // Guest-visible handle values: multiples of 4 from here (Win32 pseudo handles -1/-2 stay distinct)
 static const uint32_t kPalHandleBase = 0x00100000u;
 
-inline const char* gstr(uint32_t p) { return (const char*)(uintptr_t)p; }
-inline char* gbuf(uint32_t p) { return (char*)(uintptr_t)p; }
+inline const char* gstr(uint32_t p) { return (const char*)FNV_G2H(p); }
+inline char* gbuf(uint32_t p) { return (char*)FNV_G2H(p); }

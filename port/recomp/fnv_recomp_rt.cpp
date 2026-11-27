@@ -11,6 +11,9 @@
 
 // 1: lock-releasing zero stores are release stores (fnv_recomp.h MREL); set by the host before the game's threads start
 extern "C" int fnv_weak_memory = 0;
+#ifdef FNV_GUEST_BASE_RUNTIME
+extern "C" uintptr_t fnv_guest_base = 0;   // set by the host before the guest runs
+#endif
 
 namespace {
 // open-addressing table, power-of-two size, key 0 = empty (no function lives at address 0)
