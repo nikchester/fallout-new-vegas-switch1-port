@@ -7,6 +7,7 @@
 #include <cerrno>
 #include <cstdarg>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <initializer_list>
 #include <sys/stat.h>
@@ -180,18 +181,29 @@ static void gpu_tests() {
     say("  dkDeviceCreate...");  // a line before each step, so a crash shows where it happened
     DkDevice dev = dkDeviceCreate(&dm);
     if (!dev) return say("  dkDeviceCreate failed");
+    // The storage is allocated here, not by deko3d: when the host part runs out, deko3d crashes instead of failing.
     DkMemBlock blocks[48];
+    void* storage[48];
     int n = 0;
     while (n < 48) {
+        if (!(storage[n] = aligned_alloc(DK_MEMBLOCK_ALIGNMENT, 64 * MiB))) break;
         say("  memblock %d (64 MiB)...", n);
         DkMemBlockMaker mm;
         dkMemBlockMakerDefaults(&mm, dev, 64 * MiB);
         mm.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
-        if (!(blocks[n] = dkMemBlockCreate(&mm))) break;
+        mm.storage = storage[n];
+        if (!(blocks[n] = dkMemBlockCreate(&mm))) {
+            free(storage[n]);
+            break;
+        }
         n++;
     }
-    say("  64 MiB memblocks from the host part: %d (%d MiB)%s", n, n * 64, n == 48 ? " (cap reached)" : " then refused");
-    while (n) dkMemBlockDestroy(blocks[--n]);
+    say("  64 MiB memblocks from the host part: %d (%d MiB)%s", n, n * 64,
+        n == 48 ? " (cap reached)" : " then out of host memory or refused");
+    while (n) {
+        dkMemBlockDestroy(blocks[--n]);
+        free(storage[n]);
+    }
     dkDeviceDestroy(dev);
 }
 
