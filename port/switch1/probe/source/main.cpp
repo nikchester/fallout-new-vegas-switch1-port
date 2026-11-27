@@ -1,12 +1,15 @@
 // fnv1 probe: measures what the console offers (memory, address space, CPU, GPU, SD). Writes to the screen and to
 // sdmc:/switch/fnv1/probe.log; changes nothing else on the SD card. Every svc failure is logged with its result code.
+// When started with `nxlink -s`, every line is also sent to the PC.
 #include <switch.h>
 
 #include <cerrno>
 #include <cstdarg>
 #include <cstdio>
+#include <cstring>
 #include <initializer_list>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <deko3d.h>
 
@@ -15,6 +18,7 @@
 static const u64 MiB = 1ull << 20, GiB = 1ull << 30;
 static const u64 kWindow = 4 * GiB;
 static FILE* g_log;
+static int g_net = -1;  // nxlink socket, -1 when not started by nxlink
 
 static void say(const char* fmt, ...) {
     char line[256];
@@ -26,6 +30,10 @@ static void say(const char* fmt, ...) {
     if (g_log) {
         fprintf(g_log, "%s\n", line);
         fflush(g_log);
+    }
+    if (g_net >= 0) {
+        write(g_net, line, strlen(line));
+        write(g_net, "\n", 1);
     }
     consoleUpdate(NULL);
 }
@@ -161,9 +169,13 @@ int main() {
     mkdir("sdmc:/switch/fnv1", 0777);  // EEXIST is fine
     g_log = fopen("sdmc:/switch/fnv1/probe.log", "w");
     if (!g_log) printf("cannot open the log (errno %d); screen only\n", errno);
+    // Sockets only when nxlink started us, so a normal run measures memory without them.
+    bool sockets = __nxlink_host.s_addr && R_SUCCEEDED(socketInitializeDefault());
+    if (sockets) g_net = nxlinkConnectToHost(false, false);
 
     AppletType at = appletGetAppletType();
     say("== Launch mode ==");
+    say("  nxlink: %s", g_net >= 0 ? "connected" : "off");
     say("  applet type %d (%s)", (int)at, at == AppletType_Application ? "Application: OK" : "NOT Application: hold R while starting the game");
     say("  memory: total %llu MiB, used %llu MiB", info(InfoType_TotalMemorySize) / MiB, info(InfoType_UsedMemorySize) / MiB);
     window_tests();
@@ -177,6 +189,8 @@ int main() {
         consoleUpdate(NULL);
     }
     if (g_log) fclose(g_log);
+    if (g_net >= 0) close(g_net);
+    if (sockets) socketExit();
     consoleExit(NULL);
     return 0;
 }
