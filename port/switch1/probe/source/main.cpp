@@ -21,6 +21,40 @@ static const u64 kWindow = 4 * GiB;
 static FILE* g_log;
 static int g_net = -1;  // nxlink socket, -1 when not started by nxlink
 
+// The process heap is split: malloc never touches the guest part [g_heap, g_heap + g_guest); the host part above it
+// is newlib's (deko3d, buffers). This is the dense guest heap layout: guest address = offset in the heap. The probe
+// must never shrink the heap with svcSetHeapSize, that would free memory newlib already uses.
+static const u64 kHostPart = 768 * MiB;
+static u8* g_heap;
+static u64 g_heap_size, g_guest;
+
+extern "C" {
+extern char* fake_heap_start;
+extern char* fake_heap_end;
+
+void __libnx_initheap(void) {
+    void* addr = NULL;
+    u64 size = 0;
+    if (envHasHeapOverride()) {  // hbloader has already set the heap to all free memory
+        addr = envGetHeapOverrideAddr();
+        size = envGetHeapOverrideSize();
+    } else {
+        u64 total = 0, used = 0;
+        svcGetInfo(&total, InfoType_TotalMemorySize, CUR_PROCESS_HANDLE, 0);
+        svcGetInfo(&used, InfoType_UsedMemorySize, CUR_PROCESS_HANDLE, 0);
+        size = (total - used - 2 * MiB) & ~(2 * MiB - 1);
+        if (R_FAILED(svcSetHeapSize(&addr, size)))
+            diagAbortWithResult(MAKERESULT(Module_Libnx, LibnxError_HeapAllocFailed));
+    }
+    g_heap = (u8*)addr;
+    g_heap_size = size;
+    g_guest = size > kHostPart ? (size - kHostPart) & ~(64 * MiB - 1) : 0;
+    if (g_guest > kWindow) g_guest = kWindow;
+    fake_heap_start = (char*)addr + g_guest;
+    fake_heap_end = (char*)addr + size;
+}
+}
+
 static void say(const char* fmt, ...) {
     char line[256];
     va_list ap;
@@ -68,6 +102,18 @@ static void window_tests() {
     if (res) virtmemAddReservation(res, kWindow);
     virtmemUnlock();
 
+    // Variant C: dense guest heap, the guest part of the process heap used as is.
+    say("C) dense heap at %p: %llu MiB; guest part %llu MiB, host part (malloc) %llu MiB", g_heap, g_heap_size / MiB,
+        g_guest / MiB, (g_heap_size - g_guest) / MiB);
+    u64 ok = 0;
+    for (u64 o = 0; o < g_guest; o += 2 * MiB) {  // one word per 2 MiB: write, read back
+        volatile u32* p = (volatile u32*)(g_heap + o);
+        *p = u32(o >> 21) ^ 0x5a5a5a5au;
+        if (*p != (u32(o >> 21) ^ 0x5a5a5a5au)) break;
+        ok = o + 2 * MiB;
+    }
+    say("  C written and read back: %llu MiB; above 2 GiB: %s", ok / MiB, ok > 0x80000000ull ? "YES" : "NO");
+
     // Variant A: svcMapPhysicalMemory in the alias region.
     u64 alias = info(InfoType_AliasRegionAddress), asize = info(InfoType_AliasRegionSize);
     say("A) svcMapPhysicalMemory, alias region %llx+%llx (%llu MiB)", alias, asize, asize / MiB);
@@ -85,14 +131,12 @@ static void window_tests() {
         if (R_SUCCEEDED(rc)) svcUnmapPhysicalMemory((void*)(alias + off), 2 * MiB);
     }
 
-    // Variant B: svcSetHeapSize + svcMapMemory (destination: stack region, then the virtmem reservation).
-    u64 heap = 0, stack = info(InfoType_StackRegionAddress), ssize = info(InfoType_StackRegionSize);
-    void* hp = NULL;
-    while (heap < kWindow && R_SUCCEEDED(svcSetHeapSize(&hp, heap + 64 * MiB))) heap += 64 * MiB;
-    say("B) svcSetHeapSize: up to %llu MiB at %p; stack region %llx+%llx", heap / MiB, hp, stack, ssize);
+    // Variant B: svcMapMemory of guest-part heap pages (destination: stack region, then the virtmem reservation).
+    u64 heap = g_guest, stack = info(InfoType_StackRegionAddress), ssize = info(InfoType_StackRegionSize);
+    say("B) svcMapMemory from the guest part; stack region %llx+%llx", stack, ssize);
     // svcMapMemory makes the source inaccessible, so each source chunk is used once.
-    auto mapB = [&](u64 dst, u64 o, u64 n) { return svcMapMemory((void*)(dst + o), (u8*)hp + o, n); };
-    auto unmapB = [&](u64 dst, u64 o, u64 n) { svcUnmapMemory((void*)(dst + o), (u8*)hp + o, n); };
+    auto mapB = [&](u64 dst, u64 o, u64 n) { return svcMapMemory((void*)(dst + o), g_heap + o, n); };
+    auto unmapB = [&](u64 dst, u64 o, u64 n) { svcUnmapMemory((void*)(dst + o), g_heap + o, n); };
     for (u64 dst : {stack, (u64)res}) {
         if (!dst) continue;
         u64 limit = dst == stack ? ssize : kWindow;
@@ -103,7 +147,7 @@ static void window_tests() {
             rc);
         for (u64 o = 0; o < off; o += 64 * MiB) unmapB(dst, o, 64 * MiB);
     }
-    svcSetHeapSize(&hp, 0);  // the virtmem reservation is kept until exit
+    // the virtmem reservation is kept until exit
 }
 
 static void cpu_tests() {
@@ -133,18 +177,20 @@ static void gpu_tests() {
     dm.cbDebug = [](void*, const char* ctx, DkResult r, const char* msg) {
         say("  deko3d: %s: result %d %s", ctx, (int)r, msg ? msg : "");
     };
+    say("  dkDeviceCreate...");  // a line before each step, so a crash shows where it happened
     DkDevice dev = dkDeviceCreate(&dm);
     if (!dev) return say("  dkDeviceCreate failed");
-    DkMemBlock blocks[16];
+    DkMemBlock blocks[48];
     int n = 0;
-    while (n < 16) {
+    while (n < 48) {
+        say("  memblock %d (64 MiB)...", n);
         DkMemBlockMaker mm;
-        dkMemBlockMakerDefaults(&mm, dev, 256 * MiB);
+        dkMemBlockMakerDefaults(&mm, dev, 64 * MiB);
         mm.flags = DkMemBlockFlags_CpuUncached | DkMemBlockFlags_GpuCached;
         if (!(blocks[n] = dkMemBlockCreate(&mm))) break;
         n++;
     }
-    say("  256 MiB memblocks: %d (%d MiB)%s", n, n * 256, n == 16 ? " (cap reached)" : " then refused");
+    say("  64 MiB memblocks from the host part: %d (%d MiB)%s", n, n * 64, n == 48 ? " (cap reached)" : " then refused");
     while (n) dkMemBlockDestroy(blocks[--n]);
     dkDeviceDestroy(dev);
 }
