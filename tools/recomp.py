@@ -345,7 +345,7 @@ class Recompiler(ls.Lifter):
                 old.unlink()
             path.write_bytes(pickle.dumps(self.cache_new, protocol=pickle.HIGHEST_PROTOCOL))
 
-    def shards(self, n, x87_regs=True, iat=None, leaf_max=None, stack_slots=True, callee_saved=True, small_max=0):
+    def shards(self, n, x87_regs=True, iat=None, leaf_max=None, stack_slots=True, callee_saved=True, small_max=0, native=()):
         groups = [[] for _ in range(n)]
         for a in sorted(self.lifted):
             groups[zlib.crc32(struct.pack('<I', a)) % n].append(a)
@@ -358,7 +358,7 @@ class Recompiler(ls.Lifter):
             texts = stack_slots_pass(texts)
         if callee_saved:                             # ebx/esi/edi/ebp kept in host registers across calls
             texts = callee_saved_pass(texts)
-        for a in NATIVE_FUNCS & set(texts):
+        for a in set(native) & set(texts):
             texts[a] = texts[a].replace('void f_%08x(FnvCpu& s_)' % a, 'void fo_%08x(FnvCpu& s_)' % a, 1)
         leaf_max = LEAF_MAX if leaf_max is None else leaf_max
         leaves = small_leaves(texts, leaf_max) | small_functions(texts, small_max)
@@ -520,6 +520,8 @@ HOST_FUNCS = {0x00aa4ee0}
 #   0x0043f8d0 NiMatrix3::operator*, 0x0062c250 NiTransform::operator*, 0x004b6190 NiPoint3::Dot,
 #   0x004b6160 NiPlane::Distance, 0x004b6100 NiBound::WhichSide, 0x0049da80 NiCamera::ClassifyPoint
 #   0x00b9bbb0 ShadowSceneLight::TestSphereFrustum (shadow culling: 3.6% of the main thread at Ultra)
+# Off by default: the build uses the lifted code until `--native` is given (then native_math.cpp is built with
+# -DFNV_NATIVE_MATH, which the build scripts switch on by the out/recomp/native_math.on marker).
 NATIVE_FUNCS = {0x0043f8d0, 0x0062c250, 0x004b6190, 0x004b6160, 0x004b6100, 0x0049da80, 0x00b9bbb0, 0x00b9f5b0}
 
 LOCAL_HEAD = re.compile(r'^void (f_[0-9a-f]{8})\(FnvCpu& s\)\n\{\n    FNV_ENTER\((0x[0-9a-f]{8}u)\);\n')
@@ -574,6 +576,7 @@ def main():
     ap.add_argument('--no-stack-slots', action='store_true', help='frame slots stay in guest memory (tools/stack_slots.py off)')
     ap.add_argument('--no-inline-imports', action='store_true', help='every import call dispatches (INLINE_IMPORTS off)')
     ap.add_argument('--no-x87-regs', action='store_true', help='keep the x87 stack in memory everywhere (tools/x87_static.py off)')
+    ap.add_argument('--native', action='store_true', help='use the hand-written versions of NATIVE_FUNCS (port/recomp/native_math.cpp) instead of the lifted code')
     a = ap.parse_args()
     t0 = time.time()
     img = Image(a.exe)
@@ -596,7 +599,13 @@ def main():
     OUT.mkdir(parents=True, exist_ok=True)
     iat = {} if a.no_inline_imports else {va: n.split('!', 1)[1] for va, n in img.imports().items()}
     shards = rc.shards(a.shards, x87_regs=not a.no_x87_regs, iat=iat, leaf_max=a.leaf_max,
-                       stack_slots=not a.no_stack_slots, callee_saved=not a.no_callee_saved, small_max=a.small_max)
+                       stack_slots=not a.no_stack_slots, callee_saved=not a.no_callee_saved, small_max=a.small_max,
+                       native=NATIVE_FUNCS if a.native else ())
+    marker = OUT / 'native_math.on'                  # tells the build scripts to compile native_math.cpp's bodies
+    if a.native:
+        marker.write_text('\n'.join('%08x' % x for x in sorted(NATIVE_FUNCS)) + '\n')
+    elif marker.exists():
+        marker.unlink()
     names_out = {'recomp_%02d.cpp' % k for k in range(len(shards))}
     for old in OUT.glob('recomp_*.cpp'):
         if old.name not in names_out:

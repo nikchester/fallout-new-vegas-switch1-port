@@ -40,6 +40,11 @@ CFLAGS	:=	$(OPT) -ffunction-sections -fdata-sections $(ARCH) -w \
 			-fno-strict-aliasing -fwrapv -fno-delete-null-pointer-checks \
 			-DFNV_GUEST_BASE_RUNTIME -DFNV_HAVE_VORBIS -DFNV_HAVE_MPG123 -DFNV_HAVE_FFMPEG
 CFLAGS	+=	$(INCLUDE) -D__SWITCH__ -I$(PORTSRC) -I$(VKD3D)/include
+# hand-written NATIVE_FUNCS only when tools/recomp.py ran with --native (it leaves this marker); a switch needs
+# `rm build/native_math.o` (make does not see the flag change)
+ifneq ($(wildcard $(RECOMP)/native_math.on),)
+CFLAGS	+=	-DFNV_NATIVE_MATH
+endif
 CXXFLAGS	:= $(CFLAGS) -std=gnu++17
 ASFLAGS	:=	$(ARCH)
 LDFLAGS	=	-specs=$(DEVKITPRO)/libnx/switch.specs $(ARCH) -Wl,--gc-sections -Wl,-Map,$(notdir $*.map)

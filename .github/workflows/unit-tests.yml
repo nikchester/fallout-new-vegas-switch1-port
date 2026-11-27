@@ -1,0 +1,15 @@
+# Linux unit tests for the portable runtime pieces (no game files needed): guest window, guest heap, native math.
+name: unit-tests
+on:
+  push:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/test_guest_base.sh
+      - run: tools/test_guest_heap.sh
+      - run: tools/test_native_math.sh

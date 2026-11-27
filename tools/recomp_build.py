@@ -36,7 +36,7 @@ def compile_one(args):
     if obj.exists() and stamp.exists() and stamp.read_text() == key:
         return src, True, ''
     cmd = [str(LLVM / 'clang-cl.exe'), '--target=i686-pc-windows-msvc', '/nologo', '/c', opt, '/MT', '/EHsc', '-w', '/std:c++17',
-           '/Gy', '/I' + str(ROOT / 'port/recomp')] + includes() +           (['/DFNV_CALL_TRACE'] if os.environ.get('FNV_CALL_TRACE') else []) + ['/Fo' + str(obj), str(src)]
+           '/Gy', '/I' + str(ROOT / 'port/recomp')] + includes() +           (['/DFNV_CALL_TRACE'] if os.environ.get('FNV_CALL_TRACE') else []) + (['/DFNV_NATIVE_MATH'] if (OUT / 'native_math.on').exists() else []) + ['/Fo' + str(obj), str(src)]
     r = subprocess.run(cmd, capture_output=True, text=True, errors='replace')
     if r.returncode:
         return src, False, (r.stdout + r.stderr)[-3000:]
@@ -51,7 +51,8 @@ def main():
     a = ap.parse_args()
     t0 = time.time()
     hdr = hashlib.sha1(b''.join(h.read_bytes() for h in HEADERS) + a.opt.encode() +
-                       (b'trace' if os.environ.get('FNV_CALL_TRACE') else b'')).hexdigest()
+                       (b'trace' if os.environ.get('FNV_CALL_TRACE') else b'') +
+                       (b'native' if (OUT / 'native_math.on').exists() else b'')).hexdigest()
     srcs = [ROOT / 'port/recomp/fnv_recomp_rt.cpp', ROOT / 'port/recomp/host_win32.cpp', ROOT / 'port/recomp/fnv_intrinsics.cpp', ROOT / 'port/recomp/pal_kernel.cpp', ROOT / 'port/recomp/native_math.cpp', ROOT / 'port/recomp/pal_fs_std.cpp', ROOT / 'port/recomp/pal_com.cpp', ROOT / 'port/recomp/pal_input.cpp', ROOT / 'port/recomp/pal_start.cpp'] + sorted(OUT.glob('recomp_*.cpp'))
     objdir = OUT / 'obj'
     objdir.mkdir(parents=True, exist_ok=True)
