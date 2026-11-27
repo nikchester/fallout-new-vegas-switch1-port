@@ -15,7 +15,7 @@ namespace {
 #define RET(v, n) return hret(s, (uint32_t)(v), (n))
 const uint32_t D3DXERR_INVALIDDATA = 0x88760B59u;
 
-float* F(uint32_t p) { return (float*)(uintptr_t)p; }
+float* F(uint32_t p) { return (float*)FNV_G2H(p); }
 float fa(FnvCpu& s, int i) { uint32_t u = A(i); float f; memcpy(&f, &u, 4); return f; }
 
 void mul(float* o, const float* a, const float* b)
@@ -130,7 +130,7 @@ uint32_t new_xbuffer(uint32_t size)
     static ComClass* c = com_class_custom("ID3DXBuffer", {
         {"QueryInterface", 12, nullptr}, {"AddRef", 4, nullptr}, {"Release", 4, nullptr},
         {"GetBufferPointer", 4, xb_GetBufferPointer}, {"GetBufferSize", 4, xb_GetBufferSize}});
-    XBuf* b = new XBuf{(uint32_t)(uintptr_t)calloc(1, size ? size : 4), size};
+    XBuf* b = new XBuf{FNV_H2G(calloc(1, size ? size : 4)), size};
     return com_new(c, b);
 }
 void x_CreateBuffer(FnvCpu& s) { M32(A(1)) = new_xbuffer(A(0)); RET(0, 2); }
@@ -235,8 +235,8 @@ void x_SaveTextureToFileA(FnvCpu& s) { RET(0x80004005u, 4); }
 
 // ---- shaders ---------------------------------------------------------------------------------------------------------
 std::atomic<bool> g_logged_compile;
-void x_GetVertexShaderProfile(FnvCpu& s) { static char p[] = "vs_3_0"; RET((uintptr_t)p, 1); }
-void x_GetPixelShaderProfile(FnvCpu& s) { static char p[] = "ps_3_0"; RET((uintptr_t)p, 1); }
+void x_GetVertexShaderProfile(FnvCpu& s) { static char p[] = "vs_3_0"; RET(FNV_H2G(p), 1); }
+void x_GetPixelShaderProfile(FnvCpu& s) { static char p[] = "ps_3_0"; RET(FNV_H2G(p), 1); }
 void shader_fail(FnvCpu& s, int nargs, int out_shader, int out_errors)
 {
     if (!g_logged_compile.exchange(true)) fnv_host_log("[d3dx] run-time shader assembly/compilation requested: not available\n");

@@ -7,9 +7,9 @@
 #include <wchar.h>
 
 #define A(i) M32(s.esp + 4u + 4u * (i))
-#define P(i) ((char*)(uintptr_t)A(i))
-#define CP(i) ((const char*)(uintptr_t)A(i))
-#define R(v) (s.eax = (uint32_t)(uintptr_t)(v))
+#define P(i) ((char*)FNV_G2H(A(i)))
+#define CP(i) ((const char*)FNV_G2H(A(i)))
+#define R(v) (s.eax = FNV_H2G(v))
 
 void fnv_i_memmove(FnvCpu& s) { memmove(P(0), CP(1), A(2)); R(A(0)); }
 void fnv_i_memset(FnvCpu& s) { memset(P(0), (int)(A(1) & 0xff), A(2)); R(A(0)); }
@@ -26,7 +26,7 @@ void fnv_i_strstr(FnvCpu& s) { const char* r = strstr(CP(0), CP(1)); R(r); }
 void fnv_i_strpbrk(FnvCpu& s) { const char* r = strpbrk(CP(0), CP(1)); R(r); }
 void fnv_i_wcslen(FnvCpu& s)
 {
-    const uint16_t* p = (const uint16_t*)(uintptr_t)A(0);
+    const uint16_t* p = (const uint16_t*)FNV_G2H(A(0));
     uint32_t n = 0;
     while (p[n]) ++n;
     R(n);
@@ -71,5 +71,5 @@ void archive_sort(uint32_t* entries, int first, int last)
 
 void fnv_i_archive_sort(FnvCpu& s)
 {
-    archive_sort((uint32_t*)(uintptr_t)A(0), (int32_t)A(1), (int32_t)A(2));
+    archive_sort((uint32_t*)FNV_G2H(A(0)), (int32_t)A(1), (int32_t)A(2));
 }

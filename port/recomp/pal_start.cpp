@@ -107,15 +107,15 @@ void run_line(FnvCpu& s, const char* line)
     uint32_t compiler = M32(console);                                  // ConsoleManager::m_pScriptCompiler
     char* text = (char*)calloc(1, strlen(line) + 1);
     strcpy(text, line);
-    uint32_t script = (uint32_t)(uintptr_t)calloc(1, 0x200);           // Script (0x54 bytes) with room to spare
+    uint32_t script = FNV_H2G(calloc(1, 0x200));           // Script (0x54 bytes) with room to spare
     this_call(s, kScriptCtor, script, nullptr, 0);
     this_call(s, kFormChanged, script, nullptr, 0);
-    uint32_t t = (uint32_t)(uintptr_t)text;
+    uint32_t t = FNV_H2G(text);
     this_call(s, kScriptSetText, script, &t, 1);
     uint32_t c[3] = {compiler, kCompilerSystemWindow, 0};               // no selected reference
     this_call(s, kScriptCompile, script, c, 3);
     this_call(s, kScriptDtor, script, nullptr, 0);
-    free((void*)(uintptr_t)script);
+    free((void*)FNV_G2H(script));
     free(text);
     fnv_host_log((std::string("[start] ") + line + "\n").c_str());
 }
