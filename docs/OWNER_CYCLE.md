@@ -46,3 +46,8 @@ the NRO, or snippets of generated code.
 
 `tools/owner_cycle.sh --exe /nonexistent` stops with "exe not found". The Linux host with an empty function table
 (no game files) is covered by `tools/test_pal_posix.sh` (CI job `unit-tests`).
+
+## Notes
+
+- ccache: `--ccache DIR` is passed to the container by `tools/switch1/build.sh` (`CCACHE_DIR`, mounted at the same path). It helps only if ccache is installed in the image.
+- The `lifted/unsupported` and `guest_heap_high_water` lines of `summary.txt` are placeholders: they appear only once `recomp.py` writes `out/recomp/report.json` and the host prints `guest_heap_high_water`. Until then the summary says "not in the logs" for the address check.

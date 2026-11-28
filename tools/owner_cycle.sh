@@ -90,6 +90,11 @@ M=$(sed -n 's/^probes matched: \([0-9]*\)\/.*/\1/p' "$LOGS/exe_check.log")
 [ "${M:-0}" -ge 12 ] || die "exe_check matched ${M:-0} probes (need >= 12): this is not the GOG 1.4.0.525 exe"
 [ $CHECK_ONLY -eq 1 ] && { say "check only: done"; echo "logs: $LOGS"; exit 0; }
 
+# docker is needed for the Switch 1 build: fail before the long steps, not after
+if [ -f port/switch1/game/Makefile ]; then
+  command -v docker >/dev/null 2>&1 || command -v podman >/dev/null 2>&1 || die "docker not found (start Docker Desktop, enable WSL integration)"
+fi
+
 # 3. recompile and tables ------------------------------------------------------------------------------------------------
 if [ $RECOMP -eq 1 ]; then
   step "recomp" recomp.log $PY -B tools/recomp.py --exe "$EXE" --shards 64
@@ -108,7 +113,6 @@ else
 fi
 SW=port/switch1/game
 if [ -f $SW/Makefile ]; then
-  command -v docker >/dev/null 2>&1 || command -v podman >/dev/null 2>&1 || die "docker not found (start Docker Desktop, enable WSL integration)"
   mkdir -p "$CCACHE"
   export CCACHE_DIR=$CCACHE
   step "build switch1" build_switch1.log env OPT="$OPT" tools/switch1/build.sh $SW make -j"$JOBS" OPT="$OPT"
@@ -123,7 +127,8 @@ else
   say "build switch1: SKIPPED ($SW/Makefile does not exist yet)"
 fi
 
-# 5. summary for the task --------------------------------------------------------------------------------------------------
+# 5. summary for the task (the lifted/unsupported and guest_heap_high_water lines are placeholders: they appear once recomp.py
+#    writes out/recomp/report.json and the host prints guest_heap_high_water; until then they are absent / 'not in the logs') --------------------------------------------------------------------------------------------------
 {
   echo "commit: $(git rev-parse --short HEAD) opt=$OPT jobs=$JOBS"
   echo "probes matched: $M"

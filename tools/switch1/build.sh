@@ -16,6 +16,10 @@ shift || true
 # Rootless podman already maps root to the caller.
 user=
 [ "$(basename "$engine")" = podman ] || user="--user $(id -u):$(id -g)"
+# Compiler cache: if CCACHE_DIR names a host folder, mount it at the same path and pass it on (ccache is used when present
+# in the image).
+cc=
+if [ -n "${CCACHE_DIR:-}" ]; then mkdir -p "$CCACHE_DIR"; cc="-v $CCACHE_DIR:$CCACHE_DIR -e CCACHE_DIR=$CCACHE_DIR"; fi
 # shellcheck disable=SC2086
-exec "$engine" run --rm $user -v "$root:/src" -w "/src/$dir" -e DEVKITPRO=/opt/devkitpro fnv-switch1 \
+exec "$engine" run --rm $user $cc -v "$root:/src" -w "/src/$dir" -e DEVKITPRO=/opt/devkitpro fnv-switch1 \
     sh -c 'export PATH=/opt/devkitpro/tools/bin:/opt/devkitpro/devkitA64/bin:$PATH; exec "$@"' sh "$@"
