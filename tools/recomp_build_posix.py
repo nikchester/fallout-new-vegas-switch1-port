@@ -64,7 +64,8 @@ def main():
     flags = [a.opt, '-g1', '-fno-strict-aliasing', '-fwrapv', '-fno-delete-null-pointer-checks',
              '-fno-strict-float-cast-overflow', '-c', '-w', '-pthread', '-std=c++17', '-I' + str(ROOT / 'port/recomp'), '-I' + str(VKD3D / 'include'),
              ('-DFNV_GUEST_BASE_RUNTIME' if a.runtime_base else '-DFNV_GUEST_BASE=' + GUEST_BASE)] + (['-DFNV_CALL_TRACE'] if os.environ.get('FNV_CALL_TRACE') else []) \
-        + (['-DFNV_PROFILE_STACK'] if a.profile else []) + ['-D' + d for d in a.define] + a.flag
+        + (['-DFNV_PROFILE_STACK'] if a.profile else []) + (['-DFNV_NATIVE_MATH'] if (OUT / 'native_math.on').exists() else []) \
+        + ['-D' + d for d in a.define] + a.flag
     # native sound decoders (pal_user.cpp Vorbis, pal_dshow.cpp MP3) when their headers are installed
     # (libvorbis-dev, libmpg123-dev); without them voices, ambient loops and music stay silent
     decoders, declibs = [], []

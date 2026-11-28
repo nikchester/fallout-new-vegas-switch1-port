@@ -75,6 +75,14 @@ docs/PROFILE_MAIN_THREAD.md):
   functions, with the lifted original kept as `fo_XXXXXXXX` and compared on live data under `FNV_NATIVE_CHECK=1`.
   So far NiMatrix3/NiTransform multiply and the culling plane tests (Dot, Distance, WhichSide, ClassifyPoint):
   33-134 million live calls each compared, 0 differences.
+  **Opt-in:** `tools/recomp.py` uses the lifted code for all of them unless `--native` is given (then it also writes
+  `out/recomp/native_math.on`, and the build scripts and the Switch 2 Makefiles compile native_math.cpp with
+  `-DFNV_NATIVE_MATH`; without the flag the file is empty). Re-run the build after switching (the Makefiles need
+  `rm build/native_math.o`). `tools/test_native_math.sh` unit-tests each function against its reference formula on
+  Linux (CI: `unit-tests`); `python tools/native_check.py <FalloutNV.exe>` is the owner's one-command comparison against
+  the lifted originals on live data (FNV_NATIVE_CHECK=1). The versions are written from the public layouts (fnv_decomp
+  headers), so every layout, calling convention and rounding point is an assumption until that check reports 0
+  differences; keep `--native` off until then.
 - **x87 pass sees unconditional jumps** (tools/x87_static.py `code_of`): `goto L;  // jmp ...` was not taken as
   unconditional because of its trailing comment, so the code after every jmp looked reachable by falling through,
   depths clashed and optimized functions kept the x87 stack in memory. 853 more functions in locals (16,006), among
