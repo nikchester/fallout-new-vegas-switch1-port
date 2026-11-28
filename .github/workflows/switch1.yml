@@ -35,3 +35,9 @@ jobs:
           for d in -DFNV_GUEST_BASE_RUNTIME -DFNV_GUEST_BASE=0x100000000000ull ""; do
             c++ -std=c++17 -m64 $d -fsyntax-only -Iport/recomp port/recomp/pal_kernel.cpp
           done
+  pal_posix:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: tools/test_pal_posix.sh
+      - run: c++ -std=c++17 -DFNV_GUEST_BASE=0x100000000000ull -fsyntax-only -Iport/recomp port/recomp/host_posix.cpp
