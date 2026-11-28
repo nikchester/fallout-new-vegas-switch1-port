@@ -5,7 +5,9 @@
 #include <map>
 #include <mutex>
 #include <string.h>
+#ifndef __SWITCH__
 #include <sys/mman.h>
+#endif
 
 namespace {
 
@@ -14,12 +16,19 @@ const uint32_t kHeader = 16, kMagic = 0x48564e46;   // "FNVH"
 const uint32_t kChunk = 0x100000, kMaxSmall = 0x20000;   // blocks up to 128 KB come from 1 MB chunks, larger ones get a region
 const int kClasses = 12;                             // 32 B .. 128 KB, powers of two (header included)
 
+#ifdef __SWITCH__
+// Horizon: the guest window is a dense block of the process heap (host_switch1.cpp), already mapped and writable, so
+// commit only has to hand out zeroed pages and decommit has nothing to return.
+bool posix_commit(uint32_t a, uint32_t n) { memset((void*)FNV_G2H(a), 0, n); return true; }
+void posix_decommit(uint32_t, uint32_t) {}
+#else
 bool posix_commit(uint32_t a, uint32_t n) { return mprotect((void*)FNV_G2H(a), n, PROT_READ | PROT_WRITE) == 0; }
 void posix_decommit(uint32_t a, uint32_t n)
 {
     madvise((void*)FNV_G2H(a), n, MADV_DONTNEED);
     mprotect((void*)FNV_G2H(a), n, PROT_NONE);
 }
+#endif
 const GuestHeapBackend kPosix = {posix_commit, posix_decommit};
 
 struct Region { uint64_t size; };
