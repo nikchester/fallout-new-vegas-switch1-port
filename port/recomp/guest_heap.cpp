@@ -4,6 +4,7 @@
 #include <algorithm>
 #include <map>
 #include <mutex>
+#include <stdio.h>
 #include <string.h>
 #ifndef __SWITCH__
 #include <sys/mman.h>
@@ -12,6 +13,7 @@
 namespace {
 
 const uint64_t kPage = 0x1000, kGran = 0x10000;
+const uint64_t kNoLaaLimit = GH_NO_LAA_LIMIT;   // the port runs as a non-LAA process: guest memory stays below 2 GB
 const uint32_t kHeader = 16, kMagic = 0x48564e46;   // "FNVH"
 const uint32_t kChunk = 0x100000, kMaxSmall = 0x20000;   // blocks up to 128 KB come from 1 MB chunks, larger ones get a region
 const int kClasses = 12;                             // 32 B .. 128 KB, powers of two (header included)
@@ -36,6 +38,7 @@ struct Region { uint64_t size; };
 std::mutex g_mu;
 GuestHeapBackend g_be = kPosix;
 uint64_t g_lo = 0, g_hi = 0;
+uint64_t g_high = 0;                                 // highest guest address handed out so far (exclusive end)
 std::map<uint64_t, Region> g_regions;                // reserved ranges, keyed by start
 std::map<uint64_t, uint64_t> g_committed;            // committed page runs (start -> end), merged
 uint32_t g_free[kClasses];                           // free-list heads (user pointers), next link in the first 4 bytes
@@ -52,11 +55,15 @@ uint64_t find_free(uint64_t size)
         if (r.first >= at + size) break;
         at = std::max(at, up(r.first + r.second.size, kGran));
     }
-    return at + size <= g_hi ? at : 0;
+    return at + size <= g_hi ? at : 0;   // exhaustion: g_hi never exceeds the 2 GB limit
 }
 bool range_free(uint64_t a, uint64_t size)
 {
-    if (a < g_lo || a + size > g_hi) return false;
+    if (a < g_lo || a + size > g_hi)
+    {
+        if (a + size > kNoLaaLimit) fprintf(stderr, "guest_heap: refused %#llx+%#llx, above the 2 GB non-LAA limit\n", (unsigned long long)a, (unsigned long long)size);
+        return false;
+    }
     auto it = g_regions.upper_bound(a);
     if (it != g_regions.end() && it->first < a + size) return false;
     if (it != g_regions.begin() && std::prev(it)->first + std::prev(it)->second.size > a) return false;
@@ -127,6 +134,7 @@ uint32_t vm_alloc(uint32_t addr, uint32_t size, uint32_t type)
         }
         else if (!(at = find_free(sz))) return 0;
         g_regions[at] = {sz};
+        g_high = std::max(g_high, at + sz);
         if (type & GH_MEM_COMMIT)
         {
             uint64_t cn = up(size, kPage);
@@ -249,7 +257,9 @@ void guest_heap_init(uint32_t lo, uint64_t hi, const GuestHeapBackend* backend)
 {
     std::lock_guard<std::mutex> l(g_mu);
     g_be = backend ? *backend : kPosix;
-    g_lo = lo, g_hi = std::min<uint64_t>(hi, 1ull << 32);
+    g_lo = lo, g_hi = std::min<uint64_t>(hi, kNoLaaLimit);
+    if (hi > kNoLaaLimit) fprintf(stderr, "guest_heap: limit %#llx clamped to %#llx (non-LAA)\n", (unsigned long long)hi, (unsigned long long)kNoLaaLimit);
+    g_high = 0;
     g_regions.clear(), g_committed.clear();
     memset(g_free, 0, sizeof g_free);
     g_chunk_cur = g_chunk_end = g_chunk_committed = 0;
@@ -272,3 +282,5 @@ uint32_t guest_heap_realloc(uint32_t p, uint32_t n, bool z)
     heap_free(p);
     return q;
 }
+
+uint64_t guest_heap_high_water() { std::lock_guard<std::mutex> l(g_mu); return g_high; }
