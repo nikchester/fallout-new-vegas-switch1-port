@@ -21,11 +21,12 @@ OUT = ROOT / 'out/recomp'
 BUILD = OUT / 'posix'
 GUEST_BASE = '0x100000000000ull'          # 16 TB: far from anything the C library or loader maps
 HEADERS = [ROOT / 'port/recomp' / h for h in ('fnv_recomp.h', 'fnv_recomp_host.h', 'pal.h', 'pal_com.h', 'pal_d3d9.h',
-                                              'pal_sound.h', 'pal_fs.h', 'guest_heap.h', 'renderer_vk.h')] + \
+                                              'pal_sound.h', 'pal_fs.h', 'guest_heap.h')] + \
           [ROOT / 'port/runtime/fnv_lift_ops.h', OUT / 'import_table.inc', OUT / 'com_tables.inc', OUT / 'd3d9_caps.inc']
 PORT = ['fnv_recomp_rt.cpp', 'fnv_intrinsics.cpp', 'pal_kernel.cpp', 'native_math.cpp', 'pal_fs_std.cpp', 'pal_com.cpp', 'pal_user.cpp',
         'pal_input.cpp', 'pal_start.cpp', 'pal_dsound.cpp', 'pal_d3d9.cpp', 'pal_d3dx.cpp', 'pal_dshow.cpp', 'pal_bink.cpp',
-        'guest_heap.cpp', 'host_posix.cpp', 'host_window_sdl.cpp', 'renderer_vk.cpp']
+        'guest_heap.cpp', 'host_posix.cpp']
+GRAPHICS = ['host_window_sdl.cpp', 'renderer_vk.cpp']   # window and Vulkan renderer; without them the D3D ring stays off
 VKD3D = ROOT / 'local/dl/vkd3d/vkd3d-1.19'   # patched vkd3d-shader (tools/vkd3d_patches), static
 
 
@@ -60,6 +61,8 @@ def main():
                     '(e.g. --flag=-fprofile-instr-generate)')
     ap.add_argument('--build-dir', help='object and binary folder under out/recomp (default posix, posix_rt, posix_prof)')
     a = ap.parse_args()
+    graphics = all((ROOT / 'port/recomp' / f).exists() for f in GRAPHICS)
+    print('graphics: %s' % ('window + Vulkan renderer' if graphics else 'none (headless: the D3D ring is off, packets are dropped)'))
     cxx = tool('clang++')
     flags = [a.opt, '-g1', '-fno-strict-aliasing', '-fwrapv', '-fno-delete-null-pointer-checks',
              '-fno-strict-float-cast-overflow', '-c', '-w', '-pthread', '-std=c++17', '-I' + str(ROOT / 'port/recomp'), '-I' + str(VKD3D / 'include'),
@@ -83,12 +86,14 @@ def main():
     if a.profile: BUILD = OUT / ('posix_prof_rt' if a.runtime_base else 'posix_prof')
     if a.build_dir: BUILD = OUT / a.build_dir
     BUILD.mkdir(parents=True, exist_ok=True)
+    port = PORT + (GRAPHICS if graphics else [])
+    if graphics: HEADERS.append(ROOT / 'port/recomp/renderer_vk.h')
     hdr = hashlib.sha1(b''.join(h.read_bytes() for h in HEADERS) + ' '.join(flags).encode()).hexdigest()
     shards = sorted(OUT.glob('recomp_[0-9][0-9].cpp'))
     if not shards:
         raise SystemExit('no lifted shards: run tools/recomp.py first')
     jobs = []
-    for src in shards + [ROOT / 'port/recomp' / f for f in PORT]:
+    for src in shards + [ROOT / 'port/recomp' / f for f in port]:
         obj = BUILD / (src.stem + '.o')
         key = hashlib.sha1(src.read_bytes() + hdr.encode()).hexdigest()
         jobs.append((cxx, flags, src, obj, key))
@@ -103,7 +108,7 @@ def main():
     if failed:
         raise SystemExit('%d files failed' % failed)
     exe = BUILD / 'fnv_posix'
-    libs = [str(VKD3D / '.libs/libvkd3d-shader.a'), '-lSDL2', '-lvulkan'] + declibs + ['-lz', '-lm']
+    libs = ([str(VKD3D / '.libs/libvkd3d-shader.a'), '-lSDL2', '-lvulkan'] if graphics else []) + declibs + ['-lz', '-lm']
     r = subprocess.run([cxx, '-fuse-ld=lld', '-pthread'] + a.flag + ['-o', str(exe)] + [str(j[3]) for j in jobs] + libs,
                        capture_output=True, text=True, errors='replace')
     if r.returncode:

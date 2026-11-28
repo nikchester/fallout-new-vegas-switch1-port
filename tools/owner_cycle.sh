@@ -13,6 +13,8 @@
 #   --no-update      do not run git pull first
 #   --skip-recomp    reuse out/recomp (only rebuild)
 #   --nxlink HOST    after the Switch 1 build send the NRO with `nxlink -a HOST -s` (homebrew menu netloader, Y)
+#   --run-linux [S]  after the Linux build run the headless host for S seconds (default 120) in the exe's folder (Data/ next to it)
+#                    and add the [boot] stage lines and any fnv_host_fatal to summary.txt
 #   --check-only     stop after the exe check
 set -u
 cd "$(dirname "$0")/.." || exit 1
@@ -20,7 +22,7 @@ ROOT=$PWD
 PARENT=$(dirname "$ROOT")
 EXE=${FNV_EXE:-$PARENT/fnv-private/FalloutNV.exe}
 DECOMP=${FNV_DECOMP:-$PARENT/fnv_decomp}
-JOBS=2; OPT=-O1; CCACHE_DIR_ARG=; UPDATE=1; RECOMP=1; NXHOST=; CHECK_ONLY=0
+JOBS=2; OPT=-O1; CCACHE_DIR_ARG=; UPDATE=1; RECOMP=1; NXHOST=; CHECK_ONLY=0; RUNSEC=0
 while [ $# -gt 0 ]; do
   case $1 in
     --exe) EXE=$2; shift ;;
@@ -32,8 +34,9 @@ while [ $# -gt 0 ]; do
     --no-update) UPDATE=0 ;;
     --skip-recomp) RECOMP=0 ;;
     --nxlink) NXHOST=$2; shift ;;
+    --run-linux) RUNSEC=120; case ${2:-} in ''|-*) ;; *) RUNSEC=$2; shift ;; esac ;;
     --check-only) CHECK_ONLY=1 ;;
-    -h|--help) sed -n 2,19p "$0"; exit 0 ;;
+    -h|--help) sed -n 2,21p "$0"; exit 0 ;;
     *) echo "unknown option: $1 (see --help)"; exit 2 ;;
   esac
   shift
@@ -111,6 +114,11 @@ if command -v clang++ >/dev/null 2>&1; then
 else
   say "build linux: SKIPPED (clang++ not found in this shell; the Linux host build needs clang, lld, SDL2, vulkan headers)"
 fi
+if [ $RUNSEC -gt 0 ] && [ -x out/recomp/posix/fnv_posix ]; then
+  say "== run linux (headless, $RUNSEC s, cwd $(dirname "$EXE"))"
+  ( cd "$(dirname "$EXE")" && timeout "$RUNSEC" "$ROOT/out/recomp/posix/fnv_posix" --exe "$EXE" ) >"$LOGS/run_linux.log" 2>&1
+  say "   run linux: exit $? (124 = still running at the time limit; log run_linux.log)"
+fi
 SW=port/switch1/game
 if [ -f $SW/Makefile ]; then
   mkdir -p "$CCACHE"
@@ -132,6 +140,10 @@ fi
 {
   echo "commit: $(git rev-parse --short HEAD) opt=$OPT jobs=$JOBS"
   echo "probes matched: $M"
+  if [ -f "$LOGS/run_linux.log" ]; then
+    grep -E '^\[boot\]' "$LOGS/run_linux.log" || echo "[boot] no stage reached"
+    grep -m3 -E '\[posix\] stopping|fnv_host_fatal' "$LOGS/run_linux.log" || echo "no fatal in run_linux.log"
+  fi
   for f in out/recomp/posix/fnv_posix $SW/*.nro; do [ -f "$f" ] && echo "size $(basename "$f"): $(stat -c %s "$f") bytes"; done
   [ -f out/recomp/report.json ] && $PY -c "import json;r=json.load(open('out/recomp/report.json'));print('lifted %d, unsupported %d'%(r['lifted'],r['unsupported']))"
   # guest address check: the port runs without LAA, so a guest address >= 0x80000000 is an error

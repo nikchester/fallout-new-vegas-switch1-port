@@ -127,7 +127,10 @@ std::deque<std::string> g_queue;     // console lines from the host (pal_console
 PalBoot g_pal_boot;
 void pal_boot_stage(uint32_t stage)
 {
-    if (stage > g_pal_boot.stage) g_pal_boot.stage = stage;
+    if (stage <= g_pal_boot.stage) return;
+    g_pal_boot.stage = stage;
+    static const char* const kNames[] = {"", "kBootMain", "kBootMenu", "kBootWorld", "kBootPorch"};
+    fnv_host_log((std::string("[boot] ") + (stage < 5 ? kNames[stage] : "?") + "\n").c_str());
 }
 
 void pal_start_quick() { g_state = kWaitMenu; }
