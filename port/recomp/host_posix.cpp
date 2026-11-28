@@ -315,6 +315,7 @@ int main(int argc, char** argv)
     if (!fnv_posix_load_exe(exe)) return 1;
     logf("[posix] %u lifted functions\n", fnv_function_count());
     if (!fnv_function_count()) return 0;
+    pal_boot_stage(kBootMain);
     return (int)fnv_posix_run_main(fnv_posix_entry(), 0);
 }
 #endif

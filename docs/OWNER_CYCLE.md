@@ -35,6 +35,15 @@ expected to take 15-30 minutes.
 
 If a compiler process is killed (out of memory in Docker/WSL), the script says so: re-run with `-j1`.
 
+## Linux run without graphics (stage 2.2)
+
+    tools/owner_cycle.sh --exe /path/FalloutNV.exe --run-linux 180
+
+After the Linux build the host runs headless (no window or renderer is linked; the D3D command ring stays off and packets are
+dropped) in the exe's folder, so `Data/` must sit next to the exe. `summary.txt` then lists the `[boot]` stage lines
+(`kBootMain`, `kBootMenu`, `kBootWorld`, `kBootPorch`) and any `[posix] stopping:` line (`fnv_host_fatal`). The goal of 2.2
+is `kBootMenu` with no `stopping:` line. Post `summary.txt` and the last ~100 lines of `run_linux.log` (no game data in them).
+
 ## What to send back
 
 Everything goes in `out/owner_cycle/<timestamp>/`. Post only the text files: `summary.txt` (commit, probes matched,
