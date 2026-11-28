@@ -26,6 +26,18 @@ jobs:
         with:
           name: probe-nro
           path: port/switch1/probe/probe.nro
+  fnv:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: ENGINE=docker tools/switch1/build.sh port/switch1/fnv 2>&1 | tee fnv-build.log
+      - run: ls -l port/switch1/fnv/fnv.nro
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fnv-host-nro
+          path: |
+            port/switch1/fnv/fnv.nro
+            fnv-build.log
   guest_heap:
     runs-on: ubuntu-latest
     steps:
